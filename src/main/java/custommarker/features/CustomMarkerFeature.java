@@ -43,6 +43,7 @@ import mindustry.ui.dialogs.BaseDialog;
 import mindustry.ui.dialogs.SettingsMenuDialog;
 import mindustry.core.World;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -64,6 +65,7 @@ public class CustomMarkerFeature {
     private static final String chatListWindowName = "custommarker-chatmarks";
 
     private static final String keyEnabled = "cm-enabled";
+    private static final String keyOverlayWindowVisible = "cm-overlay-window-visible";
     private static final String keyTemplateInit = "cm-templates-init";
     private static final String keyTemplates = "cm-templates";
 
@@ -99,6 +101,7 @@ public class CustomMarkerFeature {
     private static String lastCapturedKey = "";
 
     private static boolean enabled;
+    private static boolean overlayWindowVisible;
     private static boolean inited;
 
     private static MarkerPanel panelElement;
@@ -118,6 +121,7 @@ public class CustomMarkerFeature {
 
         Events.on(EventType.ClientLoadEvent.class, e -> {
             Core.settings.defaults(keyEnabled, true);
+            Core.settings.defaults(keyOverlayWindowVisible, true);
             Core.settings.defaults(keyTemplateInit, false);
 
             ensureTemplateDefaults();
@@ -207,6 +211,7 @@ public class CustomMarkerFeature {
             nextAttachTryAt = Time.time + 60f;
             ensureUiAttached();
         }
+        syncOverlayWindowStateFromOverlayUi();
         syncOverlayButtonWindow(false);
 
         if (!enabled) {
@@ -245,6 +250,19 @@ public class CustomMarkerFeature {
 
     private static void reloadRuntimeSettings() {
         enabled = Core.settings.getBool(keyEnabled, true);
+        overlayWindowVisible = Core.settings.getBool(keyOverlayWindowVisible, true);
+    }
+
+    private static void syncOverlayWindowStateFromOverlayUi() {
+        if (xOverlayWindow == null || !xOverlayUi.isInstalled()) return;
+        if (!enabled) return;
+
+        Boolean visible = xOverlayUi.getEnabled(xOverlayWindow);
+        if (visible == null || visible == overlayWindowVisible) return;
+
+        overlayWindowVisible = visible;
+        lastOverlayVisible = visible;
+        Core.settings.put(keyOverlayWindowVisible, visible);
     }
 
     private static boolean canUseMarkerUi() {
@@ -375,7 +393,7 @@ public class CustomMarkerFeature {
     }
 
     private static boolean desiredOverlayVisible() {
-        return enabled;
+        return enabled && overlayWindowVisible;
     }
 
     private static void syncOverlayButtonWindow(boolean force) {
@@ -915,6 +933,8 @@ public class CustomMarkerFeature {
         private Method getData;
         private Method setEnabled;
         private Method setPinned;
+        private Method getEnabled;
+        private Field enabledField;
         private Method getOpen;
         private Method toggleOverlay;
         private boolean accessorsInitialized;
@@ -980,6 +1000,28 @@ public class CustomMarkerFeature {
             }
         }
 
+        Boolean getEnabled(Object window) {
+            if (window == null) return null;
+            try {
+                tryInitWindowAccessors(window);
+                if (getData == null) return null;
+
+                Object data = getData.invoke(window);
+                if (data == null) return null;
+                if (getEnabled != null) {
+                    Object out = getEnabled.invoke(data);
+                    if (out instanceof Boolean) return (Boolean) out;
+                }
+                if (enabledField != null) {
+                    Object out = enabledField.get(data);
+                    if (out instanceof Boolean) return (Boolean) out;
+                }
+                return null;
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
         void tryConfigureWindow(Object window, boolean autoHeight, boolean resizable) {
             if (window == null) return;
             try {
@@ -1039,6 +1081,21 @@ public class CustomMarkerFeature {
                         setPinned = dc.getMethod("setPinned", boolean.class);
                     } catch (Throwable ignored) {
                         setPinned = null;
+                    }
+                    try {
+                        getEnabled = dc.getMethod("isEnabled");
+                    } catch (Throwable ignored) {
+                        try {
+                            getEnabled = dc.getMethod("getEnabled");
+                        } catch (Throwable ignoredAgain) {
+                            getEnabled = null;
+                        }
+                    }
+                    try {
+                        enabledField = dc.getDeclaredField("enabled");
+                        enabledField.setAccessible(true);
+                    } catch (Throwable ignored) {
+                        enabledField = null;
                     }
                 }
 
