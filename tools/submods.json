@@ -34,6 +34,46 @@
       "injectBekHooks": false
     },
     {
+      "id": "bls",
+      "name": "betterLogisticsSpeed",
+      "localPath": "../betterLogisticsSpeed",
+      "javaPackageDir": "src/main/java/betterlogisticsspeed",
+      "mainClassFile": "BetterLogisticsSpeedMod.java",
+      "bundlesDir": "src/main/resources/bundles",
+      "injectBekHooks": false,
+      "allowNoGit": true
+    },
+    {
+      "id": "bhk",
+      "name": "betterHotKey",
+      "localPath": "../betterHotKey",
+      "javaPackageDir": "src/main/java/betterhotkey",
+      "mainClassFile": "BetterHotKeyMod.java",
+      "bundlesDir": "src/main/resources/bundles",
+      "injectBekHooks": false,
+      "allowNoGit": true
+    },
+    {
+      "id": "mu",
+      "name": "modUpdater",
+      "localPath": "../modUpdater",
+      "javaPackageDir": "src/main/java/modupdater",
+      "mainClassFile": "ModUpdaterMod.java",
+      "bundlesDir": "src/main/resources/bundles",
+      "injectBekHooks": false,
+      "allowNoGit": true
+    },
+    {
+      "id": "hm",
+      "name": "hiddenMessage",
+      "localPath": "../hiddenMessage",
+      "javaPackageDir": "src/main/java/hiddenmessage",
+      "mainClassFile": "HiddenMessageMod.java",
+      "bundlesDir": "src/main/resources/bundles",
+      "injectBekHooks": false,
+      "allowNoGit": true
+    },
+    {
       "id": "spdb",
       "name": "ServerPlayerDataBase",
       "localPath": "../ServerPlayerDataBase",

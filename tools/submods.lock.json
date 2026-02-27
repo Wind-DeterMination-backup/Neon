@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generatedAtUtc": "2026-02-27T03:10:35Z",
+  "generatedAtUtc": "2026-02-27T03:47:52Z",
   "mods": {
     "pgmm": {
-      "head": "935350e56dbc67dd599e2ffac7b26df23aa95e75",
+      "head": "fd1ac9ebc940eba08430412a96960ef1f9970a1e",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\Power-Grid-Minimap-repo-clone"
     },
     "sp": {
@@ -11,24 +11,40 @@
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\StealthPath"
     },
     "rbm": {
-      "head": "c7b10a6dd4c4f8d69287d585510791f5ebad7021",
+      "head": "b3c54287be9829b54b3bff7eff43e116acd4ac0f",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\Radial-Build-Menu-hud-"
     },
     "bmm": {
-      "head": "65b148505e872e07545f81f94f86b7a5a1761aa3",
+      "head": "63ea50e2817af9fed788a87064608f95726c78c6",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterMiniMap"
     },
     "spdb": {
-      "head": "nogit-5fa0878cbc8b716471d406167b940c09cf013378",
+      "head": "nogit-b36c5fb97552a862cdfb04e871817f6f5761dbc2",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\ServerPlayerDataBase"
     },
     "bme": {
-      "head": "e72eb1040ba8f68c730cb26585ea8c0ca81e7e7a",
+      "head": "73cdf8e1887e86c3d8bd2f48d1e9fd73a5f91158",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\BetterMapEditor"
     },
     "bpo": {
-      "head": "dbabc4bbec47642ab5e7e98230205e21b0185bc8",
+      "head": "21f36164d41b1c51597aaf2781b53705f6c1d3cf",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\BetterProjectorOverlay"
+    },
+    "bls": {
+      "head": "nogit-64639f6a7e304030c13c713438ded3d47938afb6",
+      "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterLogisticsSpeed"
+    },
+    "bhk": {
+      "head": "nogit-6fabee2dddd09e0f73d92a704db90e34a125372f",
+      "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterHotKey"
+    },
+    "mu": {
+      "head": "nogit-b72868eb644c2a789e8a7aa33eef9868114269fc",
+      "localPath": "C:\\Users\\华硕\\Documents\\codex\\modUpdater"
+    },
+    "hm": {
+      "head": "nogit-393f09b890f32aa9f8dc164fe1af57597b5b8acf",
+      "localPath": "C:\\Users\\华硕\\Documents\\codex\\hiddenMessage"
     }
   }
 }

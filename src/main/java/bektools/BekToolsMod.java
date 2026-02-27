@@ -4,14 +4,18 @@ import arc.Core;
 import arc.Events;
 import arc.util.CommandHandler;
 import bettermapeditor.BetterMapEditorMod;
+import betterhotkey.BetterHotKeyMod;
 import betterminimap.BetterMiniMapMod;
+import betterlogisticsspeed.BetterLogisticsSpeedMod;
 import betterprojectoroverlay.BetterProjectorOverlayMod;
 import betterscreenshot.features.BetterScreenShotFeature;
 import custommarker.features.CustomMarkerFeature;
+import hiddenmessage.HiddenMessageMod;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.gen.Icon;
 import mindustry.mod.Mod;
 import mindustry.ui.dialogs.SettingsMenuDialog;
+import modupdater.ModUpdaterMod;
 import bektools.ui.RbmStyle;
 import powergridminimap.PowerGridMinimapMod;
 import radialbuildmenu.RadialBuildMenuMod;
@@ -28,6 +32,10 @@ public class BekToolsMod extends Mod{
     private final ServerPlayerDataBaseMod serverPlayerDataBase;
     private final BetterMapEditorMod betterMapEditor;
     private final BetterProjectorOverlayMod betterProjectorOverlay;
+    private final BetterLogisticsSpeedMod betterLogisticsSpeed;
+    private final BetterHotKeyMod betterHotKey;
+    private final ModUpdaterMod modUpdater;
+    private final HiddenMessageMod hiddenMessage;
 
     public BekToolsMod(){
         PowerGridMinimapMod.bekBundled = true;
@@ -36,6 +44,10 @@ public class BekToolsMod extends Mod{
         BetterMiniMapMod.bekBundled = true;
         ServerPlayerDataBaseMod.bekBundled = true;
         BetterProjectorOverlayMod.bekBundled = true;
+        BetterLogisticsSpeedMod.bekBundled = true;
+        BetterHotKeyMod.bekBundled = true;
+        ModUpdaterMod.bekBundled = true;
+        HiddenMessageMod.bekBundled = true;
 
         pgmm = new PowerGridMinimapMod();
         stealthPath = new StealthPathMod();
@@ -47,6 +59,14 @@ public class BekToolsMod extends Mod{
         betterMapEditor.init();
         betterProjectorOverlay = new BetterProjectorOverlayMod();
         betterProjectorOverlay.init();
+        betterLogisticsSpeed = new BetterLogisticsSpeedMod();
+        betterLogisticsSpeed.init();
+        betterHotKey = new BetterHotKeyMod();
+        betterHotKey.init();
+        modUpdater = new ModUpdaterMod();
+        modUpdater.init();
+        hiddenMessage = new HiddenMessageMod();
+        hiddenMessage.init();
         CustomMarkerFeature.init();
         BetterScreenShotFeature.init();
 
@@ -80,6 +100,12 @@ public class BekToolsMod extends Mod{
                 st.pref(new RbmStyle.SubHeaderSetting("@bektools.section.bme.none"));
             });
             addGroup(table, Core.bundle.get("bektools.section.bpo", "Better Projector Overlay"), Icon.power, BetterProjectorOverlayMod::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.bls", "Better Logistics Speed"), Icon.rightOpen, betterLogisticsSpeed::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.bhk", "Better HotKey"), Icon.settingsSmall, betterHotKey::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.mu", "Mod Updater"), Icon.refresh, modUpdater::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.hm", "Hidden Message"), Icon.chat, st -> {
+                st.pref(new RbmStyle.SubHeaderSetting("@bektools.section.hm.none"));
+            });
             addGroup(table, Core.bundle.get("bektools.section.update", "Update"), Icon.refresh, st -> {
                 st.checkPref(GithubUpdateCheck.enabledKey(), true);
                 st.checkPref(GithubUpdateCheck.showDialogKey(), true);
