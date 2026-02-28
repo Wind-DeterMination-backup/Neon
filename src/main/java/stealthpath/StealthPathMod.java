@@ -94,6 +94,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private static final String keyOverlayWindowControls = "sp-ov-window-controls";
     private static final String keyTargetMode = "sp-target-mode";
     private static final String keyTargetBlock = "sp-target-block";
+    private static final String keyGoalInputSource = "sp-goal-input-source";
+    private static final String keyGoalPointVisible = "sp-goal-point-visible";
+    private static final String keyGoalPointTileX = "sp-goal-point-tile-x";
+    private static final String keyGoalPointTileY = "sp-goal-point-tile-y";
     private static final String keyPathDuration = "sp-path-duration";
     private static final String keyPathWidth = "sp-path-width";
     private static final String keyPathAlpha = "sp-path-alpha";
@@ -167,6 +171,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private static final int targetModeGenCluster = 3;
     private static final int targetModeCoreMouse = 4;
 
+    private static final int goalInputMouse = 0;
+    private static final int goalInputPoint = 1;
+
     private static final int threatModeUnset = -1;
     private static final int threatModeGround = 0;
     private static final int threatModeAir = 1;
@@ -208,9 +215,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private int liveLastMode = -1;
     private int liveLastThreatMode = Integer.MIN_VALUE;
     private int liveLastStartPacked = Integer.MIN_VALUE;
-    private int liveLastMousePacked = Integer.MIN_VALUE;
+    private int liveLastGoalPacked = Integer.MIN_VALUE;
     private boolean liveLastIncludeUnits = false;
     private float liveNextCompute = 0f;
+    private boolean goalPointDragging = false;
 
     private static final int autoModeOff = 0;
     private static final int autoModeMouse = 1;
@@ -339,6 +347,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
         Events.on(PlayerChatEvent.class, e -> onChatMessage(e.message));
         Events.on(WorldLoadEvent.class, e -> {
             clearPaths();
+            goalPointDragging = false;
             bufferedTargetPacked = -1;
             bufferedTargetX = -1;
             bufferedTargetY = -1;
@@ -561,6 +570,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
         Core.settings.defaults(keyCoreTargetCount, 1);
         Core.settings.defaults(keyTargetMode, targetModeCore);
         Core.settings.defaults(keyTargetBlock, "");
+        Core.settings.defaults(keyGoalInputSource, goalInputMouse);
+        Core.settings.defaults(keyGoalPointVisible, true);
+        Core.settings.defaults(keyGoalPointTileX, -1);
+        Core.settings.defaults(keyGoalPointTileY, -1);
         Core.settings.defaults(keyPathDuration, 10);
         Core.settings.defaults(keyPathWidth, 2);
         Core.settings.defaults(keyPathAlpha, 85);
@@ -686,6 +699,8 @@ public class StealthPathMod extends mindustry.mod.Mod{
             table.pref(new HeaderSetting("@sp.section.target", null));
             addThreatModeRow(table);
             addTargetRow(table);
+            addGoalInputSourceRow(table);
+            table.pref(new IconCheckSetting(keyGoalPointVisible, true, null, null));
             table.pref(new IconSliderSetting(keyCoreTargetCount, 1, 1, 12, 1, null, v -> String.valueOf(v), null));
 
             table.pref(new HeaderSetting("@sp.section.update", null));
@@ -836,6 +851,34 @@ public class StealthPathMod extends mindustry.mod.Mod{
         }).growX().padTop(6f);
     }
 
+    private void addGoalInputSourceRow(Table table){
+        table.row();
+        table.table(Tex.button, t -> {
+            t.left().margin(10f);
+            t.add("@sp.setting.goal.source").left().width(170f);
+
+            TextButton sourceButton = t.button("", Styles.flatt, this::cycleGoalInputSource)
+                .growX()
+                .height(40f)
+                .padLeft(8f)
+                .get();
+
+            sourceButton.update(() -> sourceButton.setText(goalInputSourceDisplay(Core.settings.getInt(keyGoalInputSource, goalInputMouse))));
+        }).growX().padTop(6f);
+    }
+
+    private void cycleGoalInputSource(){
+        int cur = Core.settings.getInt(keyGoalInputSource, goalInputMouse);
+        int next = cur == goalInputMouse ? goalInputPoint : goalInputMouse;
+        Core.settings.put(keyGoalInputSource, next);
+    }
+
+    private static String goalInputSourceDisplay(int source){
+        return source == goalInputPoint
+            ? Core.bundle.get("sp.setting.goal.source.point")
+            : Core.bundle.get("sp.setting.goal.source.mouse");
+    }
+
     private void addPathfinderRow(Table table){
         table.table(Tex.button, t -> {
             t.left().margin(10f);
@@ -886,7 +929,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
             case targetModeGenCluster:
                 return Core.bundle.get("sp.setting.target.mode.gencluster");
             case targetModeCoreMouse:
-                return Core.bundle.get("sp.setting.target.mode.coremouse");
+                return Core.settings.getInt(keyGoalInputSource, goalInputMouse) == goalInputPoint
+                    ? Core.bundle.get("sp.setting.target.mode.corepoint")
+                    : Core.bundle.get("sp.setting.target.mode.coremouse");
             default:
                 return Core.bundle.get("sp.setting.target.mode.core");
         }
@@ -961,6 +1006,137 @@ public class StealthPathMod extends mindustry.mod.Mod{
         String name = Core.settings.getString(keyTargetBlock, "");
         if(name == null || name.trim().isEmpty()) return null;
         return content.block(name);
+    }
+
+    private static boolean useGoalPointInput(){
+        return Core.settings.getInt(keyGoalInputSource, goalInputMouse) == goalInputPoint;
+    }
+
+    private int resolveGoalInputPacked(int width, int height){
+        if(width <= 0 || height <= 0) return -1;
+        if(useGoalPointInput()){
+            return ensureGoalPointPacked(width, height);
+        }
+
+        int gx = clamp(worldToTile(Core.input.mouseWorldX()), 0, width - 1);
+        int gy = clamp(worldToTile(Core.input.mouseWorldY()), 0, height - 1);
+        return gx + gy * width;
+    }
+
+    private int ensureGoalPointPacked(int width, int height){
+        if(width <= 0 || height <= 0) return -1;
+
+        int tx = Core.settings.getInt(keyGoalPointTileX, -1);
+        int ty = Core.settings.getInt(keyGoalPointTileY, -1);
+        boolean changed = false;
+
+        if(tx < 0 || ty < 0){
+            Unit u = player == null ? null : player.unit();
+            if(u != null){
+                tx = clamp(worldToTile(u.x), 0, width - 1);
+                ty = clamp(worldToTile(u.y), 0, height - 1);
+            }else{
+                tx = width / 2;
+                ty = height / 2;
+            }
+            changed = true;
+        }else{
+            int cx = clamp(tx, 0, width - 1);
+            int cy = clamp(ty, 0, height - 1);
+            if(cx != tx || cy != ty){
+                tx = cx;
+                ty = cy;
+                changed = true;
+            }
+        }
+
+        if(changed){
+            Core.settings.put(keyGoalPointTileX, tx);
+            Core.settings.put(keyGoalPointTileY, ty);
+        }
+
+        return tx + ty * width;
+    }
+
+    private void setGoalPointFromWorld(float worldX, float worldY){
+        if(world == null || world.width() <= 0 || world.height() <= 0) return;
+        int tx = clamp(worldToTile(worldX), 0, world.width() - 1);
+        int ty = clamp(worldToTile(worldY), 0, world.height() - 1);
+        Core.settings.put(keyGoalPointTileX, tx);
+        Core.settings.put(keyGoalPointTileY, ty);
+    }
+
+    private void updateGoalPointDragging(){
+        if(!useGoalPointInput()){
+            goalPointDragging = false;
+            return;
+        }
+        if(world == null || world.width() <= 0 || world.height() <= 0){
+            goalPointDragging = false;
+            return;
+        }
+
+        int packed = ensureGoalPointPacked(world.width(), world.height());
+        if(packed == -1){
+            goalPointDragging = false;
+            return;
+        }
+
+        boolean pointerDown = Core.input.keyDown(KeyCode.mouseLeft) || Core.input.isTouched();
+        if(!pointerDown){
+            goalPointDragging = false;
+            return;
+        }
+
+        int sx = Core.input.mouseX();
+        int sy = Core.input.mouseY();
+        if(!goalPointDragging && Core.scene.hasMouse(sx, sy)) return;
+
+        int tx = packed % world.width();
+        int ty = packed / world.width();
+        float markerX = tileToWorld(tx) + tilesize * 0.5f;
+        float markerY = tileToWorld(ty) + tilesize * 0.5f;
+        float pointerX = Core.input.mouseWorldX();
+        float pointerY = Core.input.mouseWorldY();
+
+        float grabRadius = Math.max(tilesize * 0.9f, 12f / Math.max(0.0001f, renderer.getDisplayScale()));
+        if(!goalPointDragging){
+            if(!Core.settings.getBool(keyGoalPointVisible, true)) return;
+            if(Mathf.dst2(pointerX, pointerY, markerX, markerY) > grabRadius * grabRadius) return;
+            goalPointDragging = true;
+        }
+
+        setGoalPointFromWorld(pointerX, pointerY);
+    }
+
+    private void drawGoalPointIndicator(){
+        if(!useGoalPointInput()) return;
+        if(!Core.settings.getBool(keyGoalPointVisible, true)) return;
+        if(world == null || world.width() <= 0 || world.height() <= 0) return;
+
+        int packed = ensureGoalPointPacked(world.width(), world.height());
+        if(packed == -1) return;
+
+        int tx = packed % world.width();
+        int ty = packed / world.width();
+        float cx = tileToWorld(tx) + tilesize * 0.5f;
+        float cy = tileToWorld(ty) + tilesize * 0.5f;
+
+        Draw.draw(Layer.overlayUI + 0.015f, () -> {
+            float displayScale = Math.max(0.0001f, renderer.getDisplayScale());
+            float radius = Math.max(tilesize * 0.48f, 8f / displayScale);
+            float cross = radius * 0.58f;
+            float stroke = Math.max(1f, 2f / displayScale);
+
+            Color color = goalPointDragging ? Pal.remove : Pal.accent;
+            Draw.color(color, 0.95f);
+            Lines.stroke(stroke);
+            Lines.circle(cx, cy, radius);
+            Lines.line(cx - cross, cy, cx + cross, cy, false);
+            Lines.line(cx, cy - cross, cx, cy + cross, false);
+            Fill.circle(cx, cy, stroke * 0.95f);
+            Draw.reset();
+        });
     }
 
     private void registerTriggers(){
@@ -1072,8 +1248,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
         int goalX, goalY;
         if(autoMode == autoModeMouse){
-            goalX = clamp(worldToTile(Core.input.mouseWorldX()), 0, world.width() - 1);
-            goalY = clamp(worldToTile(Core.input.mouseWorldY()), 0, world.height() - 1);
+            int packed = resolveGoalInputPacked(world.width(), world.height());
+            if(packed == -1) return;
+            goalX = packed % world.width();
+            goalY = packed / world.width();
         }else{
             if(bufferedTargetPacked != -1){
                 goalX = bufferedTargetX;
@@ -1276,8 +1454,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
         int goalX, goalY;
         if(autoMode == autoModeMouse){
-            goalX = clamp(worldToTile(Core.input.mouseWorldX()), 0, world.width() - 1);
-            goalY = clamp(worldToTile(Core.input.mouseWorldY()), 0, world.height() - 1);
+            int packed = resolveGoalInputPacked(world.width(), world.height());
+            if(packed == -1) return;
+            goalX = packed % world.width();
+            goalY = packed / world.width();
         }else{
             if(bufferedTargetPacked == -1) return;
             goalX = bufferedTargetX;
@@ -1393,12 +1573,16 @@ public class StealthPathMod extends mindustry.mod.Mod{
         int goalX, goalY;
         boolean issueFollowCommands = autoMoveFollow;
         if(autoMode == autoModeMouse){
-            goalX = clamp(worldToTile(Core.input.mouseWorldX()), 0, world.width() - 1);
-            goalY = clamp(worldToTile(Core.input.mouseWorldY()), 0, world.height() - 1);
+            int packed = resolveGoalInputPacked(world.width(), world.height());
+            if(packed == -1){
+                autoNextCompute = Time.time + baseInterval * 2f;
+                return;
+            }
+            goalX = packed % world.width();
+            goalY = packed / world.width();
 
             if(autoMoveFollow && autoMoveFollowGoalPacked != -1){
-                int currentPacked = goalX + goalY * world.width();
-                issueFollowCommands = currentPacked == autoMoveFollowGoalPacked;
+                issueFollowCommands = packed == autoMoveFollowGoalPacked;
             }
         }else{
             if(bufferedTargetPacked != -1){
@@ -1863,16 +2047,14 @@ public class StealthPathMod extends mindustry.mod.Mod{
         int startY = worldToTile(unit.y);
         int startPacked = startX + startY * world.width();
 
-        int mouseX = clamp(worldToTile(Core.input.mouseWorldX()), 0, world.width() - 1);
-        int mouseY = clamp(worldToTile(Core.input.mouseWorldY()), 0, world.height() - 1);
-        int mousePacked = mouseX + mouseY * world.width();
+        int goalPacked = resolveGoalInputPacked(world.width(), world.height());
 
         boolean changed = !liveRefreshWasDown
             || mode != liveLastMode
             || threatMode != liveLastThreatMode
             || includeUnits != liveLastIncludeUnits
             || startPacked != liveLastStartPacked
-            || (mode == targetModeCoreMouse && mousePacked != liveLastMousePacked);
+            || (mode == targetModeCoreMouse && goalPacked != liveLastGoalPacked);
 
         if(includeUnits && Time.time >= liveNextCompute){
             changed = true;
@@ -1889,7 +2071,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
         liveLastThreatMode = threatMode;
         liveLastIncludeUnits = includeUnits;
         liveLastStartPacked = startPacked;
-        liveLastMousePacked = mousePacked;
+        liveLastGoalPacked = goalPacked;
 
         liveNextCompute = Time.time + interval;
     }
@@ -1929,6 +2111,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private void draw(){
         if(!Core.settings.getBool(keyEnabled, true)) return;
         if(!state.isGame()) return;
+
+        updateGoalPointDragging();
+        drawGoalPointIndicator();
 
         if(!drawPaths.isEmpty()){
             Draw.draw(Layer.overlayUI + 0.01f, () -> {
@@ -1999,7 +2184,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
         if(start == null || start.unit == null) return;
 
         int threatMode = Core.settings.getInt(keyThreatMode, threatModeGround);
-        boolean moveFlying = threatMode == threatModeAir;
+        boolean moveFlying = shouldTreatPathAsFlying(start.unit, start.pathUnits);
         boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
         boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
         boolean includeUnits = autoMode != autoModeOff || includeUnitsFromLast();
@@ -2325,6 +2510,20 @@ public class StealthPathMod extends mindustry.mod.Mod{
         return 0.0001f;
     }
 
+    private static boolean shouldTreatPathAsFlying(Unit fallbackUnit, Seq<Unit> units){
+        boolean hasValidUnit = false;
+        if(units != null && units.any()){
+            for(int i = 0; i < units.size; i++){
+                Unit u = units.get(i);
+                if(u == null || !u.isAdded() || u.dead()) continue;
+                hasValidUnit = true;
+                if(!u.isFlying()) return false;
+            }
+        }
+        if(hasValidUnit) return true;
+        return fallbackUnit != null && fallbackUnit.isFlying();
+    }
+
     private void computePath(boolean includeUnits, boolean showToasts){
         long planStarted = System.nanoTime();
         clearPaths();
@@ -2347,7 +2546,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
                 if(showToasts) showToast("@sp.toast.no-path", 2.5f);
                 return;
             }
-            boolean moveFlying = threatMode == threatModeAir;
+            boolean moveFlying = shouldTreatPathAsFlying(unit, singletonUnitSeq(unit));
             boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
             boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
 
@@ -2367,7 +2566,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
         Unit unit = start.unit;
 
-        boolean moveFlying = threatMode == threatModeAir;
+        boolean moveFlying = shouldTreatPathAsFlying(unit, start.pathUnits);
         boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
         boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
 
@@ -2722,8 +2921,13 @@ public class StealthPathMod extends mindustry.mod.Mod{
             startY = startIdx / map.width;
         }
 
-        int goalX = clamp(worldToTile(Core.input.mouseWorldX()), 0, map.width - 1);
-        int goalY = clamp(worldToTile(Core.input.mouseWorldY()), 0, map.height - 1);
+        int goalPacked = resolveGoalInputPacked(map.width, map.height);
+        if(goalPacked == -1){
+            if(showToasts) showToast("@sp.toast.no-path", 2.5f);
+            return;
+        }
+        int goalX = goalPacked % map.width;
+        int goalY = goalPacked / map.width;
 
         int goalRadius = goalCandidateRadiusTiles();
         IntSeq goalsAll = buildNearestGoalCandidates(map, goalX, goalY, goalRadius, false);
@@ -4053,7 +4257,6 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
     private static float estimateTurretThreatDps(Turret.TurretBuild tb, Turret turret){
         if(tb == null || turret == null || !tb.isAdded() || tb.dead()) return 0f;
-        if(!tb.canConsume()) return 0f;
 
         BulletType ammo = tb.peekAmmo();
         if(ammo == null) return 0f;
@@ -4061,7 +4264,8 @@ public class StealthPathMod extends mindustry.mod.Mod{
         float ruleScale = Math.max(0f, state.rules.blockDamage(tb.team));
         if(ruleScale <= 0.0001f) return 0f;
 
-        float efficiency = Math.max(0f, tb.efficiency);
+        // Use potentialEfficiency so idle turrets still contribute threat.
+        float efficiency = Math.max(0f, Math.max(tb.efficiency, tb.potentialEfficiency));
         float timeScale = Math.max(0f, tb.timeScale());
         if(efficiency <= 0.0001f || timeScale <= 0.0001f) return 0f;
 
@@ -4125,10 +4329,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
     private static float estimateTractorThreatDps(TractorBeamTurret.TractorBeamBuild tb, TractorBeamTurret turret){
         if(tb == null || turret == null || !tb.isAdded() || tb.dead()) return 0f;
-        if(!tb.canConsume()) return 0f;
         if(turret.damage <= 0.0001f) return 0f;
 
-        float efficiency = Math.max(0f, tb.efficiency);
+        // Tractor beam should also use potential efficiency while idle.
+        float efficiency = Math.max(0f, Math.max(tb.efficiency, tb.potentialEfficiency));
         float timeScale = Math.max(0f, tb.timeScale());
         if(efficiency <= 0.0001f || timeScale <= 0.0001f) return 0f;
 
