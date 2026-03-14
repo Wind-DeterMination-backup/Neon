@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Random;
 
 public class HiddenMessageMod extends Mod {
+
     public static boolean bekBundled = false;
 
     private static final String PACKET_HELLO = "hm.hello";

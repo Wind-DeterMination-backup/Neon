@@ -11,7 +11,6 @@ import arc.scene.ui.ScrollPane;
 import arc.scene.ui.TextButton;
 import arc.scene.ui.layout.Table;
 import arc.util.Scaling;
-import bektools.ui.VscodeSettingsStyle;
 import mindustry.gen.Icon;
 import mindustry.gen.Tex;
 import mindustry.graphics.Pal;
@@ -39,10 +38,7 @@ final class SubHeaderSetting extends SettingsMenuDialog.SettingsTable.Setting{
             ? Core.bundle.get(titleKeyOrText.substring(1))
             : titleKeyOrText;
         table.row();
-        table.table(VscodeSettingsStyle.headerBackground(), t -> {
-            t.left().margin(8f);
-            t.add(text).color(VscodeSettingsStyle.accentColor()).left().growX().minWidth(0f).wrap();
-        }).left().growX().padTop(10f).padBottom(2f);
+        table.add(text).color(Pal.accent).left().growX().minWidth(0f).wrap().padTop(10f).padBottom(2f);
         table.row();
     }
 }
@@ -101,11 +97,7 @@ final class WideSliderSetting extends SettingsMenuDialog.SettingsTable.Setting{
         slider.change();
 
         // leave room for the vertical scrollbar on the right side
-        table.table(VscodeSettingsStyle.cardBackground(), row -> {
-            row.left().margin(4f);
-            row.stack(slider, content).width(RadialBuildMenuMod.prefWidth() - 72f).left();
-        }).width(RadialBuildMenuMod.prefWidth() - 64f).left().padTop(4f);
-        addDesc(slider);
+        addDesc(table.stack(slider, content).width(RadialBuildMenuMod.prefWidth() - 64f).left().padTop(4f).get());
         table.row();
     }
 }
@@ -134,7 +126,7 @@ final class IconCheckSetting extends SettingsMenuDialog.SettingsTable.Setting{
         box.update(() -> box.setChecked(Core.settings.getBool(name, def)));
         box.changed(() -> Core.settings.put(name, box.isChecked()));
 
-        table.table(VscodeSettingsStyle.cardBackground(), t -> {
+        table.table(Tex.button, t -> {
             t.left().margin(10f);
             if(icon != null) t.image(icon).size(20f).padRight(8f);
             t.add(box).left().growX().minWidth(0f);
@@ -184,11 +176,7 @@ final class IconSliderSetting extends SettingsMenuDialog.SettingsTable.Setting{
         });
         slider.change();
 
-        table.table(VscodeSettingsStyle.cardBackground(), row -> {
-            row.left().margin(4f);
-            row.stack(slider, content).width(RadialBuildMenuMod.prefWidth() - 8f).left();
-        }).width(RadialBuildMenuMod.prefWidth()).left().padTop(6f);
-        addDesc(slider);
+        addDesc(table.stack(slider, content).width(RadialBuildMenuMod.prefWidth()).left().padTop(6f).get());
         table.row();
     }
 }

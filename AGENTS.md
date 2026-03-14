@@ -1,0 +1,66 @@
+﻿# AGENTS.md - Neon 模组说明
+
+## 文件结构（当前仓库）
+```text
+Neon/
+|-- .github/
+|   \-- workflows/
+|       \-- release.yml
+|-- bin/
+|   \-- main/
+|       |-- bektools/
+|       |-- betterhotkey/
+|       |-- betterlogisticsspeed/
+|       |-- bundles/
+|       |-- hiddenmessage/
+|       |-- modupdater/
+|       |-- powergridminimap/
+|       |-- radialbuildmenu/
+|       |-- stealthpath/
+|       \-- mod.json
+|-- gradle/
+|   \-- wrapper/
+|       |-- gradle-wrapper.jar
+|       \-- gradle-wrapper.properties
+|-- src/
+|   \-- main/
+|       |-- java/
+|       \-- resources/
+|-- tools/
+|   |-- bektools-bundles/
+|   |   |-- bundle.properties
+|   |   \-- bundle_zh_CN.properties
+|   |-- generate_dox.py
+|   |-- submods.json
+|   |-- submods.lock.json
+|   \-- update_submods.py
+|-- .gitattributes
+|-- .gitignore
+|-- AGENTS.md
+|-- build.gradle
+|-- gradlew
+|-- gradlew.bat
+|-- LICENSE
+|-- mod.json
+|-- README.md
+\-- settings.gradle
+```
+
+## 维护约束
+- 保持 Java 8 兼容（如本项目包含 Java 源码）。
+- 变更优先聚焦性能与可读性，不做无关重构。
+- 用户可见文案优先走 bundle/资源文件，不硬编码。
+
+## 设置接入规范（Neon 风格）
+- 新并入的子模组设置项必须并入 Neon 总设置入口，不允许在 `bekBundled=true` 时再注册独立 `ui.settings.addCategory(...)`。
+- 新并入的子模组主类必须提供：
+  - `public static boolean bekBundled`
+  - `public void bekBuildSettings(SettingsMenuDialog.SettingsTable table)`
+- Neon 聚合入口统一在 `src/main/java/bektools/BekToolsMod.java` 的 `registerSettings()` 中通过 `addGroup(...)` 挂载，保持一致的分组标题/缩进/间距样式（RbmStyle）。
+- 没有独立设置项的子模组也要在 Neon 设置中给出分组与说明占位（`bektools.section.<id>.none`）。
+- 新增分组标题与说明文案必须同步写入：
+  - `tools/bektools-bundles/bundle.properties`
+  - `tools/bektools-bundles/bundle_zh_CN.properties`
+  并确保合并后的 `src/main/resources/bundles/bundle*.properties` 可用。
+
+命令操作请使用 PowerShell 7（`pwsh`）。

@@ -38,6 +38,8 @@ public class DraggableMirrorAxisFeature {
     private static MapGenerateDialog attachedDialog;
     private static Image attachedPreview;
     private static AxisDragListener dragListener;
+    private static float nextPreviewLookupAt;
+    private static final float previewLookupIntervalFrames = 20f;
 
     public static void init() {
         if (inited) return;
@@ -100,7 +102,11 @@ public class DraggableMirrorAxisFeature {
             invoke(dialog, updateMethod);
         }
 
-        Image preview = findPreviewImage(dialog.cont);
+        Image preview = attachedPreview;
+        if (preview == null || preview.getScene() == null || Time.time >= nextPreviewLookupAt) {
+            preview = findPreviewImage(dialog.cont);
+            nextPreviewLookupAt = Time.time + previewLookupIntervalFrames;
+        }
         if (preview == null) return;
 
         if (preview != attachedPreview) {
@@ -215,6 +221,7 @@ public class DraggableMirrorAxisFeature {
     private static void clearAttached() {
         detachListener();
         attachedDialog = null;
+        nextPreviewLookupAt = 0f;
     }
 
     private static void detachListener() {

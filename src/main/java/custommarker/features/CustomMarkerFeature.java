@@ -99,6 +99,9 @@ public class CustomMarkerFeature {
     private static float nextAttachTryAt;
     private static float lastChatCaptureAt;
     private static String lastCapturedKey = "";
+    private static boolean chatModeAccessorsInitialized;
+    private static Field chatModeField;
+    private static Method chatModeNormalizedPrefixMethod;
 
     private static boolean enabled;
     private static boolean overlayWindowVisible;
@@ -296,13 +299,23 @@ public class CustomMarkerFeature {
             removeFallbackOverlayHost();
 
             if (xOverlayWindow == null) {
+                boolean hadStoredState = hasStoredOverlayWindowState(overlayWindowName);
                 xOverlayWindow = xOverlayUi.registerWindow(
                     overlayWindowName,
                     createOverlayButtonContent(),
                     () -> true
                 );
                 xOverlayUi.tryConfigureWindow(xOverlayWindow, true, false);
-                syncOverlayButtonWindow(true);
+                if (hadStoredState) {
+                    Boolean visible = xOverlayUi.getEnabled(xOverlayWindow);
+                    if (visible != null) {
+                        overlayWindowVisible = visible;
+                        lastOverlayVisible = visible;
+                        Core.settings.put(keyOverlayWindowVisible, visible);
+                    }
+                } else {
+                    syncOverlayButtonWindow(true);
+                }
             }
             return;
         }
@@ -333,7 +346,13 @@ public class CustomMarkerFeature {
             () -> state != null && state.isGame()
         );
         xOverlayUi.tryConfigureWindow(xChatListWindow, false, true);
-        xOverlayUi.setEnabledAndPinned(xChatListWindow, true, false);
+        if (!hasStoredOverlayWindowState(chatListWindowName)) {
+            xOverlayUi.setEnabledAndPinned(xChatListWindow, true, false);
+        }
+    }
+
+    private static boolean hasStoredOverlayWindowState(String windowName) {
+        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private static void removeFallbackOverlayHost() {
@@ -538,6 +557,41 @@ public class CustomMarkerFeature {
         Core.scene.cancelTouchFocus();
     }
 
+    private static void tryInitChatModeAccessors() {
+        if (chatModeAccessorsInitialized) return;
+        chatModeAccessorsInitialized = true;
+        if (ui == null || ui.chatfrag == null) return;
+
+        try {
+            chatModeField = ui.chatfrag.getClass().getDeclaredField("mode");
+            chatModeField.setAccessible(true);
+            chatModeNormalizedPrefixMethod = chatModeField.getType().getMethod("normalizedPrefix");
+        } catch (Throwable ignored) {
+            chatModeField = null;
+            chatModeNormalizedPrefixMethod = null;
+        }
+    }
+
+    private static String currentChatPrefix() {
+        if (ui == null || ui.chatfrag == null) return "";
+        tryInitChatModeAccessors();
+        if (chatModeField == null || chatModeNormalizedPrefixMethod == null) return "";
+
+        try {
+            Object mode = chatModeField.get(ui.chatfrag);
+            if (mode == null) return "";
+            Object prefix = chatModeNormalizedPrefixMethod.invoke(mode);
+            return prefix instanceof String ? (String)prefix : "";
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static void sendChatMessageCompat(String message) {
+        if (message == null || message.isEmpty()) return;
+        Call.sendChatMessage(currentChatPrefix() + message);
+    }
+
     private static void markCurrent(int index) {
         if (!canUseMarkerUi()) return;
         if (index < 0 || index >= templateCount) return;
@@ -555,7 +609,7 @@ public class CustomMarkerFeature {
         String message = formatMarkerMessage(index, tileX, tileY);
 
         if (net != null && net.active()) {
-            Call.sendChatMessage(message);
+            sendChatMessageCompat(message);
         } else if (ui != null && ui.hudfrag != null) {
             ui.hudfrag.showToast("[accent]" + message + "[]");
         }

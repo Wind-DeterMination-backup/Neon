@@ -31,7 +31,6 @@ import arc.util.Strings;
 import arc.util.Time;
 import arc.util.serialization.Jval;
 import arc.util.serialization.Jval.Jformat;
-import bektools.ui.VscodeSettingsStyle;
 import mindustry.game.EventType.ClientLoadEvent;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.gen.Groups;
@@ -65,7 +64,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
 
     private static final String overlayName = "rbm-overlay";
     private static final String mobileToggleName = "rbm-mobile-toggle";
-    private static final String mobileWindowName = "圆盘建造-手机切换";
+    private static final String mobileWindowName = "rbm-mobile";
 
     private static final int slotsPerRing = 8;
     private static final int maxSlots = 16;
@@ -156,7 +155,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
             registerSettings();
             Time.runTask(10f, this::ensureOverlayAttached);
             Time.runTask(10f, this::ensureMobileToggleAttached);
-            if(!bekBundled) GithubUpdateCheck.checkOnce();
+            GithubUpdateCheck.checkOnce();
         });
 
         Events.on(WorldLoadEvent.class, e -> {
@@ -257,10 +256,8 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
 
             table.pref(new IoSetting());
 
-            if(!bekBundled){
-                table.checkPref(GithubUpdateCheck.enabledKey(), true);
-                table.checkPref(GithubUpdateCheck.showDialogKey(), true);
-            }
+            table.checkPref(GithubUpdateCheck.enabledKey(), true);
+            table.checkPref(GithubUpdateCheck.showDialogKey(), true);
         
     }
 
@@ -377,15 +374,15 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         public void add(SettingsMenuDialog.SettingsTable table){
             float width = prefWidth();
             table.row();
-            table.table(VscodeSettingsStyle.headerBackground(), t -> {
+            table.table(Styles.black3, t -> {
                 t.left().margin(8f);
                 if(icon != null){
                     t.image(icon).size(18f).padRight(6f);
                 }
-                t.add(title).color(VscodeSettingsStyle.accentColor()).left().growX().minWidth(0f).wrap();
+                t.add(title).color(Pal.accent).left().growX().minWidth(0f).wrap();
             }).width(width).padTop(10f).padBottom(5f).left();
             table.row();
-            table.image(Tex.whiteui).color(VscodeSettingsStyle.accentColor()).height(2f).width(width).padBottom(10f).left();
+            table.image(Tex.whiteui).color(Pal.accent).height(3f).width(width).padBottom(10f).left();
             table.row();
         }
     }
@@ -401,7 +398,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
 
                 t.image(mindustry.gen.Icon.settings).size(20f).padRight(8f);
@@ -425,7 +422,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
 
                 t.image(mindustry.gen.Icon.refresh).size(20f).padRight(8f);
@@ -456,7 +453,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
 
                 t.image(mindustry.gen.Icon.list).size(20f).padRight(8f);
@@ -486,7 +483,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                  t.left().margin(10f);
   
                  t.add(title).width(160f).left().wrap();
@@ -527,7 +524,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
 
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
-            Table root = table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            Table root = table.table(Tex.button, t -> {
                 t.left().margin(10f);
 
                 t.table(top -> {
@@ -619,10 +616,10 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
 
             float width = prefWidth();
             final Image[] arrow = {null};
-            Table header = table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            Table header = table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 if(icon != null) t.image(icon).size(18f).padRight(6f);
-                t.add(titleText).color(VscodeSettingsStyle.accentColor()).left().growX().minWidth(0f).wrap();
+                t.add(titleText).color(Pal.accent).left().growX().minWidth(0f).wrap();
                 arrow[0] = t.image(startOpen ? mindustry.gen.Icon.downOpen : mindustry.gen.Icon.rightOpen).size(18f).padLeft(6f).get();
             }).width(width).padTop(10f).get();
             table.row();
@@ -634,7 +631,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
             collapser.setDuration(0.12f);
             collapser.setCollapsed(!startOpen, false);
 
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().top().margin(10f);
                 t.add(collapser).growX().minWidth(0f);
             }).width(width).padTop(6f);
@@ -693,7 +690,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
             });
 
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 t.image(mindustry.gen.Icon.refresh).size(20f).padRight(8f);
                 t.add(title, Styles.outlineLabel).left().growX().minWidth(0f).wrap();
@@ -718,7 +715,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
 
-            Table root = table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            Table root = table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 t.image(mindustry.gen.Icon.logic).size(20f).padRight(8f);
                 t.add(title, Styles.outlineLabel).left().growX().minWidth(0f).wrap();
@@ -732,7 +729,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
             addDesc(root);
             table.row();
 
-            Table inner = table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            Table inner = table.table(Tex.button, t -> {
                 t.top().left().margin(10f);
 
                 t.add("@rbm.cond.help").left().growX().wrap().minWidth(0f).padBottom(6f);
@@ -850,7 +847,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             float prefWidth = prefWidth();
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
 
                 t.image(mindustry.gen.Icon.info).size(20f).padRight(8f);
@@ -1426,7 +1423,7 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
     }
 
     private Table buildMobileToggleContent(){
-        Table t = new Table(VscodeSettingsStyle.cardBackground());
+        Table t = new Table(Tex.button);
         t.touchable = Touchable.enabled;
         t.margin(8f);
 

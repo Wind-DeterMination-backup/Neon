@@ -11,23 +11,26 @@ import static mindustry.Vars.ui;
 
 public class ModUpdaterMod extends Mod{
     public static boolean bekBundled = false;
+
     private static boolean settingsAdded;
+
+    public void bekBuildSettings(SettingsMenuDialog.SettingsTable table){
+        ModUpdateCenter.buildSettings(table);
+    }
 
     @Override
     public void init(){
         ModUpdateCenter.init();
 
         Events.on(EventType.ClientLoadEvent.class, e -> {
-            if(!settingsAdded && !bekBundled && ui != null && ui.settings != null){
+            if(!settingsAdded && ui != null && ui.settings != null){
                 settingsAdded = true;
-                ui.settings.addCategory("@settings.modupdater", Icon.refresh, this::bekBuildSettings);
+                if(!bekBundled){
+                    ui.settings.addCategory("@settings.modupdater", Icon.refresh, this::bekBuildSettings);
+                }
             }
 
             ModUpdateCenter.checkOnceAtStartup();
         });
-    }
-
-    public void bekBuildSettings(SettingsMenuDialog.SettingsTable table){
-        ModUpdateCenter.buildSettings(table);
     }
 }

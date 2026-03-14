@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAtUtc": "2026-02-27T03:47:52Z",
+  "generatedAtUtc": "2026-03-12T16:16:27Z",
   "mods": {
     "pgmm": {
       "head": "fd1ac9ebc940eba08430412a96960ef1f9970a1e",
@@ -35,7 +35,7 @@
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterLogisticsSpeed"
     },
     "bhk": {
-      "head": "nogit-6fabee2dddd09e0f73d92a704db90e34a125372f",
+      "head": "nogit-c0a5d5fa5a736bbbf0a6f5099cdb90b5e5ff877f",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterHotKey"
     },
     "mu": {

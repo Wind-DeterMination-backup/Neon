@@ -173,7 +173,10 @@ public class BetterScreenShotFeature {
                 xWindow = xOverlayUi.registerWindow(overlayWindowName, panel, () -> state != null && state.isGame());
                 if (xWindow != null) {
                     xOverlayUi.tryConfigureWindow(xWindow, false, true);
-                    lastOverlayEnabled = !enabled;
+                    if (Core.settings != null && !Core.settings.has("overlayUI." + overlayWindowName) && enabled) {
+                        xOverlayUi.setEnabledAndPinned(xWindow, true, true);
+                    }
+                    lastOverlayEnabled = enabled;
                 }
             }
 

@@ -38,8 +38,8 @@ import mindustry.mod.Mod;
 import mindustry.net.Administration.TraceInfo;
 import mindustry.net.Packets.AdminAction;
 import mindustry.ui.Styles;
-import mindustry.ui.dialogs.BaseDialog;
 import mindustry.ui.dialogs.SettingsMenuDialog;
+import mindustry.ui.dialogs.BaseDialog;
 import mindustry.ui.dialogs.TraceDialog;
 
 import java.io.ByteArrayOutputStream;
@@ -50,6 +50,12 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -61,7 +67,6 @@ import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 
 public class ServerPlayerDataBaseMod extends Mod{
-    /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
 
     private static final String keyCollect = "spdb-collect";
@@ -103,6 +108,7 @@ public class ServerPlayerDataBaseMod extends Mod{
 
     private Fi dataDir;
     private Fi playersFile;
+    private Fi chatsDbFile;
     private Fi chatsDir;
     private Fi chatsIndexFile;
     private Fi legacyChatsFile;
@@ -136,10 +142,12 @@ public class ServerPlayerDataBaseMod extends Mod{
             Core.settings.defaults(keyRecordChat, false);
             Core.settings.defaults(keyAutoTrace, true);
             Core.settings.defaults(keyShowAutoTraceDialog, false);
+            GithubUpdateCheck.applyDefaults();
 
             initStorage();
             loadLocalData();
             registerSettings();
+            GithubUpdateCheck.checkOnce();
             installTraceInterceptor();
 
             nextAttachAttempt = 0f;
@@ -710,6 +718,7 @@ public class ServerPlayerDataBaseMod extends Mod{
         dataDir = Vars.dataDirectory.child("ServerPlayerDataBase");
         dataDir.mkdirs();
         playersFile = dataDir.child("players.json");
+        chatsDbFile = dataDir.child("chats.sqlite");
         chatsDir = dataDir.child("chats");
         chatsDir.mkdirs();
         chatsIndexFile = chatsDir.child("chat_index.json");
@@ -741,7 +750,7 @@ public class ServerPlayerDataBaseMod extends Mod{
             }
         }
 
-        chatDb.loadStorage(chatsDir, chatsIndexFile, json);
+        chatDb.loadStorage(chatsDbFile, chatsDir, chatsIndexFile, legacyChatsFile, json);
         chatsDirty = chatsDirty || chatDb.hasPendingWrites();
 
         // Legacy migration: old single-file storage -> date sharding.
@@ -791,7 +800,7 @@ public class ServerPlayerDataBaseMod extends Mod{
 
         if(force || chatsDirty){
             try{
-                chatDb.flushToStorage(chatsDir, chatsIndexFile, json);
+                chatDb.flushToStorage(chatsDbFile, chatsDir, chatsIndexFile, legacyChatsFile, json);
                 chatsDirty = chatDb.hasPendingWrites();
             }catch(Throwable t){
                 Log.err("SPDB: failed to save chat database.", t);
@@ -811,21 +820,25 @@ public class ServerPlayerDataBaseMod extends Mod{
         Vars.ui.settings.addCategory("玩家数据库", Icon.zoom, this::bekBuildSettings);
     }
 
-    /** Populates a {@link mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable} with this mod's settings. */
     public void bekBuildSettings(SettingsMenuDialog.SettingsTable table){
-        table.pref(new SpdbSettingsWidgets.HeaderSetting("数据采集", Icon.zoom));
-        table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyCollect, true, Icon.add, null));
-        table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyRecordChat, false, Icon.chat, null));
+            table.pref(new SpdbSettingsWidgets.HeaderSetting("数据采集", Icon.zoom));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyCollect, true, Icon.add, null));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyRecordChat, false, Icon.chat, null));
 
-        table.pref(new SpdbSettingsWidgets.HeaderSetting("管理员增强", Icon.admin));
-        table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyAutoTrace, true, Icon.zoom, null));
-        table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyShowAutoTraceDialog, false, Icon.eyeSmall, null));
+            table.pref(new SpdbSettingsWidgets.HeaderSetting("管理员增强", Icon.admin));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyAutoTrace, true, Icon.zoom, null));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyShowAutoTraceDialog, false, Icon.eyeSmall, null));
 
-        table.pref(new SpdbSettingsWidgets.HeaderSetting("工具", Icon.wrench));
-        table.pref(new SpdbSettingsWidgets.ActionButtonSetting("打开查询窗口", Icon.list, this::showStandaloneQueryDialog));
-        table.pref(new SpdbSettingsWidgets.ActionButtonSetting("打开调试窗口", Icon.zoom, this::showStandaloneDebugDialog));
-        table.pref(new SpdbSettingsWidgets.ActionButtonSetting("查找疑似小号（同IP）", Icon.players, this::showSameIpAltDialog));
-        table.pref(new SpdbSettingsWidgets.ActionButtonSetting("立即保存数据库", Icon.save, () -> saveDirty(true)));
+            table.pref(new SpdbSettingsWidgets.HeaderSetting("工具", Icon.wrench));
+            table.pref(new SpdbSettingsWidgets.ActionButtonSetting("打开查询窗口", Icon.list, this::showStandaloneQueryDialog));
+            table.pref(new SpdbSettingsWidgets.ActionButtonSetting("打开调试窗口", Icon.zoom, this::showStandaloneDebugDialog));
+            table.pref(new SpdbSettingsWidgets.ActionButtonSetting("查找疑似小号（同IP）", Icon.players, this::showSameIpAltDialog));
+            table.pref(new SpdbSettingsWidgets.ActionButtonSetting("立即保存数据库", Icon.save, () -> saveDirty(true)));
+
+            table.pref(new SpdbSettingsWidgets.HeaderSetting("更新", Icon.refresh));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(GithubUpdateCheck.enabledKey(), true, Icon.refresh, null));
+            table.pref(new SpdbSettingsWidgets.IconCheckSetting(GithubUpdateCheck.showDialogKey(), true, Icon.infoSmall, null));
+        
     }
 
     private void ensureOverlayAttached(){
@@ -836,7 +849,7 @@ public class ServerPlayerDataBaseMod extends Mod{
             overlayQueryContent = new OverlayQueryContent();
         }
         if(overlayQueryWindow == null){
-            overlayQueryWindow = overlayUI.registerWindow("玩家数据库-查询", overlayQueryContent.root, () -> Vars.state.isGame());
+            overlayQueryWindow = overlayUI.registerWindow("玩家数据库 / DB Query", overlayQueryContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayQueryWindow, false, true);
             overlayUI.setEnabledAndPinned(overlayQueryWindow, true, false);
         }
@@ -845,7 +858,7 @@ public class ServerPlayerDataBaseMod extends Mod{
             debugContent = new DebugContent();
         }
         if(overlayDebugWindow == null){
-            overlayDebugWindow = overlayUI.registerWindow("玩家数据库-调试", debugContent.root, () -> Vars.state.isGame());
+            overlayDebugWindow = overlayUI.registerWindow("解析调试 / Parser Debug", debugContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayDebugWindow, false, true);
             overlayUI.setEnabledAndPinned(overlayDebugWindow, false, false);
         }
@@ -1260,8 +1273,13 @@ public class ServerPlayerDataBaseMod extends Mod{
             p.left().top().defaults().left().pad(4f).growX();
 
             p.add("玩家库文件: " + integrityStateText(playersFileIntegrityState)).left().row();
-            p.add("聊天索引文件: " + integrityStateText(chatDb.indexIntegrityState())).left().row();
-            p.add("聊天分片文件: 已校验 " + chatDb.shardsChecked() + " 个（通过 " + chatDb.shardsValid() + " / 缺少元数据 " + chatDb.shardsMissing() + " / 校验失败 " + chatDb.shardsMismatch() + " / 算法不支持 " + chatDb.shardsUnsupported() + "）").left().wrap().row();
+            p.add("聊天存储后端: " + chatDb.storageBackendName()).left().row();
+            if(chatDb.usesSqlite()){
+                p.add("聊天数据库文件: " + integrityStateText(chatDb.indexIntegrityState()) + " | 总记录 " + chatDb.totalEntries() + " 条").left().wrap().row();
+            }else{
+                p.add("聊天索引文件: " + integrityStateText(chatDb.indexIntegrityState())).left().row();
+                p.add("聊天分片文件: 已校验 " + chatDb.shardsChecked() + " 个（通过 " + chatDb.shardsValid() + " / 缺少元数据 " + chatDb.shardsMissing() + " / 校验失败 " + chatDb.shardsMismatch() + " / 算法不支持 " + chatDb.shardsUnsupported() + "）").left().wrap().row();
+            }
 
             if(!playersIntegrityIssues.isEmpty() || chatDb.hasIntegrityIssues()){
                 p.add("异常详情:").padTop(6f).left().row();
@@ -3650,6 +3668,8 @@ public class ServerPlayerDataBaseMod extends Mod{
 
     private static class ChatDatabase{
         private static final int maxCachedDays = 8;
+        private final SqliteChatBackend sqlite = new SqliteChatBackend();
+        private boolean useSqlite;
 
         private final ObjectMap<String, Seq<ChatEntry>> dayEntries = new ObjectMap<>();
         private final ObjectMap<String, ObjectSet<String>> dayDedupe = new ObjectMap<>();
@@ -3670,7 +3690,13 @@ public class ServerPlayerDataBaseMod extends Mod{
         private int shardsUnsupported;
         private int totalEntries;
 
-        void loadStorage(Fi chatsDir, Fi chatsIndexFile, Json serializer){
+        void loadStorage(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
+            if(sqlite.load(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer)){
+                useSqlite = true;
+                return;
+            }
+
+            useSqlite = false;
             storageDir = chatsDir;
             indexFile = chatsIndexFile;
             json = serializer;
@@ -3714,47 +3740,70 @@ public class ServerPlayerDataBaseMod extends Mod{
             if(indexIntegrityState == integrityMissing) indexDirty = true;
         }
 
+        boolean usesSqlite(){
+            return useSqlite;
+        }
+
+        String storageBackendName(){
+            return useSqlite ? "SQLite" : "JSON 分片";
+        }
+
         boolean hasPendingWrites(){
+            if(useSqlite) return sqlite.hasPendingWrites();
             return !dirtyDates.isEmpty() || indexDirty;
         }
 
         boolean hasIntegrityIssues(){
+            if(useSqlite) return sqlite.hasIntegrityIssues();
             return !integrityIssues.isEmpty() || shardsMismatch > 0 || shardsUnsupported > 0 || indexIntegrityState == integrityMismatch || indexIntegrityState == integrityUnsupported;
         }
 
         Seq<String> integrityIssues(){
+            if(useSqlite) return sqlite.integrityIssues();
             return integrityIssues.copy();
         }
 
         int indexIntegrityState(){
+            if(useSqlite) return sqlite.indexIntegrityState();
             return indexIntegrityState;
         }
 
         int shardsChecked(){
+            if(useSqlite) return sqlite.shardsChecked();
             return shardsChecked;
         }
 
         int shardsValid(){
+            if(useSqlite) return sqlite.shardsValid();
             return shardsValid;
         }
 
         int shardsMissing(){
+            if(useSqlite) return sqlite.shardsMissing();
             return shardsMissing;
         }
 
         int shardsMismatch(){
+            if(useSqlite) return sqlite.shardsMismatch();
             return shardsMismatch;
         }
 
         int shardsUnsupported(){
+            if(useSqlite) return sqlite.shardsUnsupported();
             return shardsUnsupported;
         }
 
         int totalEntries(){
+            if(useSqlite) return sqlite.totalEntries();
             return totalEntries;
         }
 
-        void flushToStorage(Fi chatsDir, Fi chatsIndexFile, Json serializer){
+        void flushToStorage(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
+            if(useSqlite){
+                sqlite.flushToStorage(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer);
+                return;
+            }
+
             if(chatsDir != null) storageDir = chatsDir;
             if(chatsIndexFile != null) indexFile = chatsIndexFile;
             if(serializer != null) json = serializer;
@@ -3800,6 +3849,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         ChatDbFile snapshot(){
+            if(useSqlite) return sqlite.snapshot();
+
             ChatDbFile out = new ChatDbFile();
             Seq<String> dates = collectAllDates();
             dates.sort();
@@ -3816,6 +3867,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         int mergeFrom(ChatDbFile incoming){
+            if(useSqlite) return sqlite.mergeFrom(incoming);
+
             if(incoming == null || incoming.entries == null) return 0;
             int merged = 0;
             for(ChatEntry entry : incoming.entries){
@@ -3828,6 +3881,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         boolean moveUid(String oldUid, String newUid){
+            if(useSqlite) return sqlite.moveUid(oldUid, newUid);
+
             oldUid = normalizeUid(oldUid);
             newUid = normalizeUid(newUid);
             if(oldUid == null || newUid == null || oldUid.equals(newUid)) return false;
@@ -3865,6 +3920,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         boolean add(String uid, String senderName, String message, String server, long time){
+            if(useSqlite) return sqlite.add(uid, senderName, message, server, time);
+
             uid = normalizeUid(uid);
             if(uid == null || message == null) return false;
 
@@ -3891,6 +3948,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         Seq<ChatEntry> findByUid(String uid){
+            if(useSqlite) return sqlite.findByUid(uid);
+
             uid = normalizeUid(uid);
             Seq<ChatEntry> out = new Seq<>();
             if(uid == null) return out;
@@ -3913,6 +3972,8 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
 
         Seq<ChatEntry> findRecent(int offset, int limit){
+            if(useSqlite) return sqlite.findRecent(offset, limit);
+
             Seq<ChatEntry> all = new Seq<>();
             if(limit <= 0) return all;
 
@@ -4154,6 +4215,353 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
     }
 
+    private static class SqliteChatBackend{
+        private Fi databaseFile;
+        private final Seq<String> integrityIssues = new Seq<>();
+        private int integrityState = integrityMissing;
+        private int totalEntries;
+
+        boolean load(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
+            databaseFile = chatsDbFile;
+            integrityIssues.clear();
+            integrityState = integrityMissing;
+            totalEntries = 0;
+
+            if(databaseFile == null) return false;
+
+            try{
+                Class.forName("org.sqlite.JDBC");
+                if(databaseFile.parent() != null) databaseFile.parent().mkdirs();
+
+                try(Connection conn = openConnection()){
+                    applyPragmas(conn);
+                    ensureSchema(conn);
+                }
+
+                integrityState = integrityValid;
+                totalEntries = countRows();
+
+                if(totalEntries == 0 && chatsDir != null && chatsDir.exists() && serializer != null){
+                    int migrated = migrateShardFiles(chatsDir, serializer);
+                    if(migrated > 0){
+                        totalEntries = countRows();
+                        Log.info("SPDB: migrated @ chat entries from JSON shards into SQLite.", migrated);
+                    }
+                }
+
+                return true;
+            }catch(Throwable t){
+                integrityState = integrityMismatch;
+                addIntegrityIssue("SQLite 聊天数据库初始化失败，已回退到 JSON 分片存储。", t);
+                return false;
+            }
+        }
+
+        boolean hasPendingWrites(){
+            return false;
+        }
+
+        boolean hasIntegrityIssues(){
+            return !integrityIssues.isEmpty() || integrityState == integrityMismatch || integrityState == integrityUnsupported;
+        }
+
+        Seq<String> integrityIssues(){
+            return integrityIssues.copy();
+        }
+
+        int indexIntegrityState(){
+            return integrityState;
+        }
+
+        int shardsChecked(){
+            return databaseFile != null && databaseFile.exists() ? 1 : 0;
+        }
+
+        int shardsValid(){
+            return integrityState == integrityValid ? 1 : 0;
+        }
+
+        int shardsMissing(){
+            return integrityState == integrityMissing ? 1 : 0;
+        }
+
+        int shardsMismatch(){
+            return integrityState == integrityMismatch ? 1 : 0;
+        }
+
+        int shardsUnsupported(){
+            return integrityState == integrityUnsupported ? 1 : 0;
+        }
+
+        int totalEntries(){
+            return totalEntries;
+        }
+
+        void flushToStorage(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
+        }
+
+        ChatDbFile snapshot(){
+            ChatDbFile out = new ChatDbFile();
+
+            try(Connection conn = openConnection();
+                PreparedStatement stmt = conn.prepareStatement("select uid, sender_name, message, server, time from chat_entries order by time asc, id asc");
+                ResultSet rs = stmt.executeQuery()){
+                while(rs.next()){
+                    out.entries.add(readEntry(rs));
+                }
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天数据库导出读取失败。", t);
+            }
+
+            return out;
+        }
+
+        int mergeFrom(ChatDbFile incoming){
+            if(incoming == null || incoming.entries == null || incoming.entries.isEmpty()) return 0;
+            int merged = 0;
+
+            try(Connection conn = openConnection()){
+                applyPragmas(conn);
+                conn.setAutoCommit(false);
+
+                try(PreparedStatement stmt = conn.prepareStatement("insert or ignore into chat_entries(uid, sender_name, message, server, time, dedupe_key) values (?, ?, ?, ?, ?, ?)")){
+                    for(ChatEntry raw : incoming.entries){
+                        if(insertEntry(stmt, raw)) merged++;
+                    }
+                }
+
+                conn.commit();
+                totalEntries = countRows(conn);
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天数据库批量写入失败。", t);
+                return 0;
+            }
+
+            return merged;
+        }
+
+        boolean moveUid(String oldUid, String newUid){
+            oldUid = normalizeUid(oldUid);
+            newUid = normalizeUid(newUid);
+            if(oldUid == null || newUid == null || oldUid.equals(newUid)) return false;
+
+            boolean changed = false;
+            try(Connection conn = openConnection()){
+                applyPragmas(conn);
+                conn.setAutoCommit(false);
+
+                try(PreparedStatement select = conn.prepareStatement("select id, sender_name, message, server, time from chat_entries where uid = ? order by time asc, id asc");
+                    PreparedStatement update = conn.prepareStatement("update chat_entries set uid = ?, dedupe_key = ? where id = ?");
+                    PreparedStatement delete = conn.prepareStatement("delete from chat_entries where id = ?")){
+                    select.setString(1, oldUid);
+
+                    try(ResultSet rs = select.executeQuery()){
+                        while(rs.next()){
+                            long id = rs.getLong(1);
+                            String message = rs.getString(3);
+                            long time = rs.getLong(5);
+                            String server = normalizeServer(rs.getString(4));
+                            String dedupe = newUid + "|" + time + "|" + server + "|" + message;
+
+                            try{
+                                update.setString(1, newUid);
+                                update.setString(2, dedupe);
+                                update.setLong(3, id);
+                                changed |= update.executeUpdate() > 0;
+                            }catch(SQLException conflict){
+                                if(!isUniqueConflict(conflict)) throw conflict;
+                                delete.setLong(1, id);
+                                changed |= delete.executeUpdate() > 0;
+                            }
+                        }
+                    }
+                }
+
+                conn.commit();
+                if(changed) totalEntries = countRows(conn);
+                return changed;
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天 UID 合并失败。", t);
+                return false;
+            }
+        }
+
+        boolean add(String uid, String senderName, String message, String server, long time){
+            ChatEntry normalized = normalizeEntry(uid, senderName, message, server, time);
+            if(normalized == null) return false;
+
+            try(Connection conn = openConnection();
+                PreparedStatement stmt = conn.prepareStatement("insert or ignore into chat_entries(uid, sender_name, message, server, time, dedupe_key) values (?, ?, ?, ?, ?, ?)")){
+                boolean inserted = insertEntry(stmt, normalized);
+                if(inserted) totalEntries++;
+                return inserted;
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天记录写入失败。", t);
+                return false;
+            }
+        }
+
+        Seq<ChatEntry> findByUid(String uid){
+            uid = normalizeUid(uid);
+            Seq<ChatEntry> out = new Seq<>();
+            if(uid == null) return out;
+
+            try(Connection conn = openConnection();
+                PreparedStatement stmt = conn.prepareStatement("select uid, sender_name, message, server, time from chat_entries where uid = ? order by time desc, id desc")){
+                stmt.setString(1, uid);
+                try(ResultSet rs = stmt.executeQuery()){
+                    while(rs.next()){
+                        out.add(readEntry(rs));
+                    }
+                }
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天记录查询失败。", t);
+            }
+
+            return out;
+        }
+
+        Seq<ChatEntry> findRecent(int offset, int limit){
+            Seq<ChatEntry> out = new Seq<>();
+            if(limit <= 0) return out;
+            if(offset < 0) offset = 0;
+
+            try(Connection conn = openConnection();
+                PreparedStatement stmt = conn.prepareStatement("select uid, sender_name, message, server, time from chat_entries order by time desc, id desc limit ? offset ?")){
+                stmt.setInt(1, limit);
+                stmt.setInt(2, offset);
+                try(ResultSet rs = stmt.executeQuery()){
+                    while(rs.next()){
+                        out.add(readEntry(rs));
+                    }
+                }
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天分页查询失败。", t);
+            }
+
+            return out;
+        }
+
+        private int migrateShardFiles(Fi chatsDir, Json serializer){
+            if(chatsDir == null || serializer == null || !chatsDir.exists()) return 0;
+
+            Seq<Fi> files = new Seq<>();
+            for(Fi file : chatsDir.list()){
+                if(ChatDatabase.dateFromFileName(file.name()) != null) files.add(file);
+            }
+            files.sort((a, b) -> a.name().compareTo(b.name()));
+
+            int migrated = 0;
+            try(Connection conn = openConnection()){
+                applyPragmas(conn);
+                conn.setAutoCommit(false);
+
+                try(PreparedStatement stmt = conn.prepareStatement("insert or ignore into chat_entries(uid, sender_name, message, server, time, dedupe_key) values (?, ?, ?, ?, ?, ?)")){
+                    for(Fi file : files){
+                        try{
+                            ChatDayFile loaded = serializer.fromJson(ChatDayFile.class, file.readString("UTF-8"));
+                            if(loaded == null || loaded.entries == null) continue;
+                            for(ChatEntry raw : loaded.entries){
+                                if(insertEntry(stmt, raw)) migrated++;
+                            }
+                        }catch(Throwable t){
+                            addIntegrityIssue("SQLite 迁移旧聊天分片失败：" + file.name(), t);
+                        }
+                    }
+                }
+
+                conn.commit();
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 迁移旧聊天分片失败。", t);
+                return 0;
+            }
+
+            return migrated;
+        }
+
+        private Connection openConnection() throws SQLException{
+            return DriverManager.getConnection("jdbc:sqlite:" + databaseFile.file().getAbsolutePath());
+        }
+
+        private static void applyPragmas(Connection conn) throws SQLException{
+            try(Statement stmt = conn.createStatement()){
+                stmt.execute("pragma journal_mode = WAL");
+                stmt.execute("pragma synchronous = NORMAL");
+                stmt.execute("pragma temp_store = MEMORY");
+            }
+        }
+
+        private static void ensureSchema(Connection conn) throws SQLException{
+            try(Statement stmt = conn.createStatement()){
+                stmt.execute("create table if not exists chat_entries (id integer primary key autoincrement, uid text not null, sender_name text, message text not null, server text not null, time integer not null, dedupe_key text not null unique)");
+                stmt.execute("create index if not exists idx_chat_uid_time on chat_entries(uid, time desc)");
+                stmt.execute("create index if not exists idx_chat_time on chat_entries(time desc)");
+            }
+        }
+
+        private int countRows(){
+            try(Connection conn = openConnection()){
+                return countRows(conn);
+            }catch(Throwable t){
+                addIntegrityIssue("SQLite 聊天总数统计失败。", t);
+                return totalEntries;
+            }
+        }
+
+        private static int countRows(Connection conn) throws SQLException{
+            try(Statement stmt = conn.createStatement();
+                ResultSet rs = stmt.executeQuery("select count(*) from chat_entries")){
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+
+        private static ChatEntry readEntry(ResultSet rs) throws SQLException{
+            ChatEntry entry = new ChatEntry();
+            entry.uid = rs.getString(1);
+            entry.senderName = rs.getString(2);
+            entry.message = rs.getString(3);
+            entry.server = rs.getString(4);
+            entry.time = rs.getLong(5);
+            return entry;
+        }
+
+        private static boolean isUniqueConflict(SQLException error){
+            String message = error == null ? "" : error.getMessage();
+            return message != null && message.toLowerCase(Locale.ROOT).contains("unique");
+        }
+
+        private boolean insertEntry(PreparedStatement stmt, ChatEntry raw) throws SQLException{
+            ChatEntry entry = normalizeEntry(raw == null ? null : raw.uid, raw == null ? null : raw.senderName, raw == null ? null : raw.message, raw == null ? null : raw.server, raw == null ? 0L : raw.time);
+            if(entry == null) return false;
+
+            stmt.setString(1, entry.uid);
+            stmt.setString(2, entry.senderName);
+            stmt.setString(3, entry.message);
+            stmt.setString(4, entry.server);
+            stmt.setLong(5, entry.time);
+            stmt.setString(6, ChatDatabase.dedupeKey(entry));
+            return stmt.executeUpdate() > 0;
+        }
+
+        private static ChatEntry normalizeEntry(String uid, String senderName, String message, String server, long time){
+            uid = normalizeUid(uid);
+            if(uid == null || message == null) return null;
+
+            ChatEntry entry = new ChatEntry();
+            entry.uid = uid;
+            entry.senderName = safeName(senderName);
+            entry.message = message;
+            entry.server = normalizeServer(server);
+            entry.time = time > 0 ? time : Time.millis();
+            return entry;
+        }
+
+        private void addIntegrityIssue(String message, Throwable error){
+            if(message != null && !message.isEmpty() && !integrityIssues.contains(message, false)) integrityIssues.add(message);
+            if(error != null) Log.err("SPDB: @", message, error);
+        }
+    }
+
     private static class MindustryXOverlayUI{
         private boolean initialized;
         private boolean installed;
@@ -4280,3 +4688,5 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
     }
 }
+
+

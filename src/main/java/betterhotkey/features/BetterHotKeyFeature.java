@@ -9,6 +9,7 @@ import arc.input.KeyBind;
 import arc.input.KeyCode;
 import arc.scene.Group;
 import arc.scene.Element;
+import arc.scene.ui.ImageButton;
 import arc.scene.ui.Label;
 import arc.scene.event.InputEvent;
 import arc.scene.event.InputListener;
@@ -55,15 +56,27 @@ public class BetterHotKeyFeature {
     private static final String keyCustomEnabled = "bhk-custom-enabled";
     private static final String keySkipTerrainHotkeys = "bhk-skip-terrain-hotkeys";
     private static final String keySkipTerrainIgnoreList = "bhk-skip-terrain-ignore-list";
+    private static final String keyShowIconHotkeys = "bhk-show-icon-hotkeys";
+    private static final String keyMenuColumns = "bhk-menu-columns";
+    private static final String keyIconHotkeyColor = "bhk-icon-hotkey-color";
+    private static final String keyBadgeFontScale = "bhk-badge-font-scale";
+    private static final String legacyKeyInfoFontScale = "bhk-info-font-scale";
     private static final String keyGroups = "bhk-groups";
 
     private static final long comboTimeoutMs = 700L;
+    private static final float defaultBadgeFontScale = 0.38f;
 
     private static boolean inited;
     private static boolean enabled;
     private static boolean keepOrder;
     private static boolean customEnabled;
     private static boolean skipTerrainHotkeys;
+    private static boolean showIconHotkeys;
+    private static int menuColumns;
+    private static float badgeFontScale;
+
+    private static final Color defaultIconHotkeyColor = Color.valueOf("ff4d4d");
+    private static final Color iconHotkeyColor = new Color(defaultIconHotkeyColor);
 
     private static final Seq<String> skipTerrainIgnoreNames = new Seq<>();
     private static final ObjectSet<String> skipTerrainIgnoreSet = new ObjectSet<>();
@@ -88,11 +101,14 @@ public class BetterHotKeyFeature {
 
     private static boolean updateHooked;
     private static Block queuedBlock;
+    private static Block deferredRemapBlock;
 
     private static boolean suppressSkipTerrainThisFrame;
 
     // Used to detect vanilla number-combo progress and to only remap once per tap.
     private static long lastHandledBlockSelectSeqMillis;
+    private static int lastHandledBlockSelectSeq = -1;
+    private static boolean lastHandledBlockSelectEnd;
 
 
     private static Table bhkInfoRow;
@@ -102,6 +118,7 @@ public class BetterHotKeyFeature {
 
     private static Table bhkOverlay;
     private static Label bhkOverlayCustom;
+    private static Label bhkOverlayNumber;
     private static Label bhkOverlayOccupied;
 
     private static final MindustryXOverlayUI xOverlayUi = new MindustryXOverlayUI();
@@ -117,6 +134,7 @@ public class BetterHotKeyFeature {
     private static Field fieldMenuHoverBlock;
 
     private static final String nameVanillaHeaderLabel = "bhk-vanilla-header-label";
+    private static final String nameBuildHotkeyBadge = "bhk-block-hotkey-badge";
 
     public static void init() {
         if (inited) return;
@@ -126,6 +144,10 @@ public class BetterHotKeyFeature {
         Core.settings.defaults(keyKeepOrder, true);
         Core.settings.defaults(keyCustomEnabled, true);
         Core.settings.defaults(keySkipTerrainHotkeys, false);
+        Core.settings.defaults(keyShowIconHotkeys, true);
+        Core.settings.defaults(keyMenuColumns, 0);
+        Core.settings.defaults(keyIconHotkeyColor, "ff4d4d");
+        Core.settings.defaults(keyBadgeFontScale, Strings.fixed(defaultBadgeFontScale, 2));
 
         loadGroups();
         loadSkipTerrainIgnoreList();
@@ -140,6 +162,10 @@ public class BetterHotKeyFeature {
 
         Events.on(EventType.WorldLoadEvent.class, e -> {
             pendingFirst = null;
+            deferredRemapBlock = null;
+            lastHandledBlockSelectSeqMillis = 0L;
+            lastHandledBlockSelectSeq = -1;
+            lastHandledBlockSelectEnd = false;
         });
 
         // Hook update after the UI is fully created.
@@ -157,6 +183,7 @@ public class BetterHotKeyFeature {
             Events.run(EventType.Trigger.uiDrawEnd, () -> {
                 if (enabled && skipTerrainHotkeys) {
                     remapTerrainNumberHotkeysAfterVanilla();
+                    sanitizeInvalidPlacementSelection();
                 }
 
                 Block b = queuedBlock;
@@ -168,13 +195,22 @@ public class BetterHotKeyFeature {
                 if (enabled) {
                     updateBuildMenuOverlay();
                 }
+
+                updateBuildMenuHotkeyBadges();
             });
 
             Events.run(EventType.Trigger.update, () -> {
                 refreshSettings();
                 if (!enabled) {
                     pendingFirst = null;
+                    deferredRemapBlock = null;
                     return;
+                }
+
+                if (deferredRemapBlock != null) {
+                    Block block = deferredRemapBlock;
+                    deferredRemapBlock = null;
+                    selectBlock(block);
                 }
 
                 suppressSkipTerrainThisFrame = false;
@@ -183,7 +219,7 @@ public class BetterHotKeyFeature {
                     state.rules.hideBannedBlocks = false;
                 }
 
-                if (keepOrder) {
+                if (keepOrder || menuColumns > 0) {
                     keepBannedBlocksInOriginalOrder();
                 }
 
@@ -235,6 +271,17 @@ public class BetterHotKeyFeature {
         table.pref(new CenteredCheckSetting(keyKeepOrder, true, null));
         table.pref(new CenteredCheckSetting(keyCustomEnabled, true, null));
         table.pref(new CenteredCheckSetting(keySkipTerrainHotkeys, false, null));
+        table.pref(new CenteredCheckSetting(keyShowIconHotkeys, true, null));
+
+        table.pref(new SettingsMenuDialog.SettingsTable.Setting("bhk-open-display-config") {
+            @Override
+            public void add(SettingsMenuDialog.SettingsTable t) {
+                TextButton b = t.button(title, BetterHotKeyFeature::showDisplayConfigDialog).growX().margin(14f).pad(6f).center().get();
+                b.getLabel().setAlignment(Align.center);
+                b.getLabelCell().growX().align(Align.center);
+                t.row();
+            }
+        });
 
         table.pref(new SettingsMenuDialog.SettingsTable.Setting("bhk-open-ignore-list") {
             @Override
@@ -301,6 +348,20 @@ public class BetterHotKeyFeature {
         keepOrder = Core.settings.getBool(keyKeepOrder, true);
         customEnabled = Core.settings.getBool(keyCustomEnabled, true);
         skipTerrainHotkeys = Core.settings.getBool(keySkipTerrainHotkeys, false);
+        showIconHotkeys = Core.settings.getBool(keyShowIconHotkeys, true);
+        menuColumns = Math.max(0, Core.settings.getInt(keyMenuColumns, 0));
+        iconHotkeyColor.set(parseStoredColor(Core.settings.getString(keyIconHotkeyColor, "ff4d4d"), defaultIconHotkeyColor));
+        String storedBadgeFontScale = Core.settings.getString(keyBadgeFontScale, null);
+        if (storedBadgeFontScale == null) {
+            storedBadgeFontScale = Core.settings.getString(legacyKeyInfoFontScale, Strings.fixed(defaultBadgeFontScale, 2));
+        }
+        badgeFontScale = parseStoredBadgeFontScale(storedBadgeFontScale);
+    }
+
+    private static void applyLabelFontScale(Label label, float scale) {
+        if (label == null) return;
+        label.setFontScale(toRenderableFontScale(scale));
+        label.invalidateHierarchy();
     }
 
     private static void loadGroups() {
@@ -477,12 +538,18 @@ public class BetterHotKeyFeature {
             // Still mark it handled so it doesn't fire next frame.
             if (suppressSkipTerrainThisFrame) {
                 lastHandledBlockSelectSeqMillis = seqMillis;
+                lastHandledBlockSelectSeq = seq;
+                lastHandledBlockSelectEnd = end;
                 return;
             }
 
             // Only react once per vanilla combo update.
-            if (seqMillis == lastHandledBlockSelectSeqMillis) return;
+            if (seqMillis == lastHandledBlockSelectSeqMillis &&
+                seq == lastHandledBlockSelectSeq &&
+                end == lastHandledBlockSelectEnd) return;
             lastHandledBlockSelectSeqMillis = seqMillis;
+            lastHandledBlockSelectSeq = seq;
+            lastHandledBlockSelectEnd = end;
 
             // Category digit -> do nothing.
             if (seq == 0 && !end) return;
@@ -508,7 +575,7 @@ public class BetterHotKeyFeature {
             Block remapped = blocks.get(index);
             if (remapped == null || !canSelect(remapped)) return;
 
-            queueSelectBlock(remapped);
+            deferredRemapBlock = remapped;
         } catch (Throwable ignored) {
         }
     }
@@ -524,6 +591,13 @@ public class BetterHotKeyFeature {
             ensureOverlayTable();
             bhkOverlayCustom.setText("[lightgray]" + Core.bundle.get("bhk.info.custom") + ":[] -");
             bhkOverlayCustom.visible = true;
+            if (skipTerrainHotkeys) {
+                bhkOverlayNumber.setText("[lightgray]" + Core.bundle.get("bhk.info.number") + ":[] -");
+                bhkOverlayNumber.visible = true;
+            } else {
+                bhkOverlayNumber.setText("");
+                bhkOverlayNumber.visible = false;
+            }
             bhkOverlayOccupied.setText("");
             bhkOverlayOccupied.visible = false;
             bhkOverlay.visible = hostedByOverlayUI;
@@ -536,12 +610,8 @@ public class BetterHotKeyFeature {
             if (outer == null && !hostedByOverlayUI) return;
 
             ensureOverlayTable();
-
-            if (!hostedByOverlayUI) {
-                if (bhkOverlay.parent != outer) {
-                    if (bhkOverlay.hasParent()) bhkOverlay.remove();
-                    outer.addChild(bhkOverlay);
-                }
+            if (!hostedByOverlayUI && bhkOverlay.hasParent()) {
+                bhkOverlay.remove();
             }
 
             Block hover = (Block) fieldMenuHoverBlock.get(pf);
@@ -550,38 +620,41 @@ public class BetterHotKeyFeature {
                 // Keep OverlayUI windows informative even when nothing is selected.
                 bhkOverlayCustom.setText("[lightgray]" + Core.bundle.get("bhk.info.custom") + ":[] -");
                 bhkOverlayCustom.visible = true;
+                if (skipTerrainHotkeys) {
+                    bhkOverlayNumber.setText("[lightgray]" + Core.bundle.get("bhk.info.number") + ":[] -");
+                    bhkOverlayNumber.visible = true;
+                } else {
+                    bhkOverlayNumber.setText("");
+                    bhkOverlayNumber.visible = false;
+                }
                 bhkOverlayOccupied.setText("");
                 bhkOverlayOccupied.visible = false;
                 bhkOverlay.visible = hostedByOverlayUI;
                 return;
             }
 
-            if (outer != null && enabled && skipTerrainHotkeys) {
+            if (outer != null) {
                 patchVanillaPlacementKeyComboLabel(pf, outer, display);
             }
 
-            String custom = customComboFor(display);
+            String custom = enabled && customEnabled ? customComboFor(display) : "";
 
             boolean hasCustom = custom != null && !custom.isEmpty();
 
             String key = "";
+            String number = "";
             boolean occupied = false;
 
             if (hasCustom) {
-                // Custom hotkeys take precedence; don't show the numeric mapping.
                 key = custom;
-            } else if (skipTerrainHotkeys && !isTerrainBlock(display)) {
-                Category cat = (Category) fieldCurrentCategory.get(pf);
-                if (cat != null) {
-                    int idx = indexOf(getByCategorySkipTerrain(cat), display);
-                    if (idx >= 0) {
-                        key = formatNumberCombo(cat, idx);
-                        occupied = isNumberComboOccupiedByCustom(display, key);
-                    }
-                }
+            }
+            if (enabled && skipTerrainHotkeys) {
+                number = formatPlacementNumberCombo(pf, display, true);
+                occupied = isNumberComboOccupiedByCustom(display, number);
             }
 
             boolean hasKey = key != null && !key.isEmpty();
+            boolean hasNumber = number != null && !number.isEmpty();
 
             // In OverlayUI mode, always show at least a placeholder so the window isn't empty.
             if (hasKey) {
@@ -591,6 +664,18 @@ public class BetterHotKeyFeature {
             }
             bhkOverlayCustom.visible = true;
 
+            if (skipTerrainHotkeys) {
+                if (hasNumber) {
+                    bhkOverlayNumber.setText("[lightgray]" + Core.bundle.get("bhk.info.number") + ":[] " + number);
+                } else {
+                    bhkOverlayNumber.setText("[lightgray]" + Core.bundle.get("bhk.info.number") + ":[] -");
+                }
+                bhkOverlayNumber.visible = true;
+            } else {
+                bhkOverlayNumber.setText("");
+                bhkOverlayNumber.visible = false;
+            }
+
             if (occupied) {
                 bhkOverlayOccupied.setText("[red]" + Core.bundle.get("bhk.info.occupied") + "[]");
                 bhkOverlayOccupied.visible = true;
@@ -599,21 +684,13 @@ public class BetterHotKeyFeature {
                 bhkOverlayOccupied.visible = false;
             }
 
-            if (!hostedByOverlayUI) {
-                // Place overlay near the top-right, without touching table layout.
-                bhkOverlay.pack();
-                float x = Math.max(overlayPad, outer.getWidth() - bhkOverlay.getWidth() - overlayPad - overlayRightInset);
-                float y = Math.max(overlayPad, outer.getHeight() - bhkOverlay.getHeight() - overlayPad - overlayTopInset);
-                bhkOverlay.setPosition(x, y);
-            }
-            bhkOverlay.visible = hostedByOverlayUI || hasKey || occupied;
+            bhkOverlay.visible = hostedByOverlayUI;
         } catch (Throwable ignored) {
         }
     }
 
     private static void patchVanillaPlacementKeyComboLabel(Object pf, Table outer, Block display) {
         if (pf == null || outer == null || display == null) return;
-        if (!skipTerrainHotkeys) return;
         if (!reflectReady) return;
 
         try {
@@ -634,35 +711,160 @@ public class BetterHotKeyFeature {
             Label header = findVanillaHeaderLabel(headerTable, display);
             if (header == null) return;
 
-            if (nameVanillaHeaderLabel.equals(header.name)) return;
-            header.name = nameVanillaHeaderLabel;
+            if (!nameVanillaHeaderLabel.equals(header.name)) {
+                Label replacement = new Label("", header.getStyle());
+                replacement.name = nameVanillaHeaderLabel;
+                replacement.setWrap(true);
+                replacement.setAlignment(header.getLabelAlign(), header.getLineAlign());
+                replacement.setText(() -> currentPlacementHeaderText(pf));
 
-            header.update(() -> {
-                try {
-                    if (!enabled || !skipTerrainHotkeys) return;
+                if (!replaceLabelInTable(headerTable, header, replacement)) return;
+                header = replacement;
+            }
 
-                    Block hover = (Block) fieldMenuHoverBlock.get(pf);
-                    Block disp = hover != null ? hover : control.input.block;
-                    if (disp == null) return;
-
-                    String custom = customComboFor(disp);
-                    String keyCombo = "";
-
-                    if ((custom == null || custom.isEmpty()) && !isTerrainBlock(disp)) {
-                        Category cat = (Category) fieldCurrentCategory.get(pf);
-                        if (cat != null) {
-                            int idx = indexOf(getByCategorySkipTerrain(cat), disp);
-                            if (idx >= 0) {
-                                keyCombo = formatVanillaKeyCombo(pf, cat, idx);
-                            }
-                        }
-                    }
-
-                    header.setText(disp.localizedName + keyCombo);
-                } catch (Throwable ignored) {
-                }
-            });
+            header.setText(() -> currentPlacementHeaderText(pf));
         } catch (Throwable ignored) {
+        }
+    }
+
+    private static boolean replaceLabelInTable(Table table, Label oldLabel, Label newLabel) {
+        if (table == null || oldLabel == null || newLabel == null) return false;
+
+        for (Cell<?> cell : table.getCells()) {
+            if (cell == null || !cell.hasElement()) continue;
+
+            Element element = cell.get();
+            if (element == oldLabel) {
+                cell.setElement(newLabel);
+                return true;
+            }
+
+            if (element instanceof Table && replaceLabelInTable((Table) element, oldLabel, newLabel)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static String currentPlacementHeaderText(Object pf) {
+        if (pf == null) return "";
+
+        try {
+            Block hover = (Block) fieldMenuHoverBlock.get(pf);
+            Block display = hover != null ? hover : control.input.block;
+            return display == null ? "" : buildPlacementHeaderText(pf, display);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static String buildPlacementHeaderText(Object pf, Block display) {
+        if (pf == null || display == null) return "";
+
+        String title = display.localizedName == null ? "" : display.localizedName;
+        StringBuilder text = new StringBuilder(title);
+
+        boolean useSkipTerrainOrder = enabled && skipTerrainHotkeys;
+        String vanillaCombo = formatPlacementVanillaCombo(pf, display, useSkipTerrainOrder);
+        if (!vanillaCombo.isEmpty()) {
+            text.append(vanillaCombo);
+        }
+
+        if (enabled && customEnabled) {
+            String custom = customComboFor(display);
+            if (custom != null && !custom.isEmpty()) {
+                text.append("\n[lightgray]")
+                    .append(Core.bundle.get("bhk.info.custom"))
+                    .append(":[] ")
+                    .append(custom);
+            }
+        }
+
+        if (enabled && skipTerrainHotkeys) {
+            String numberCombo = formatPlacementNumberCombo(pf, display, true);
+            if (isNumberComboOccupiedByCustom(display, numberCombo)) {
+                text.append("\n[red]")
+                    .append(Core.bundle.get("bhk.info.occupied"))
+                    .append("[]");
+            }
+        }
+
+        return text.toString();
+    }
+
+    private static void sanitizeInvalidPlacementSelection() {
+        if (control == null || control.input == null) return;
+
+        Block current = control.input.block;
+        if (!shouldForceDistributionFallback(current)) return;
+
+        Block fallback = pickDistributionFallback();
+        if (fallback == null || fallback == current) return;
+
+        deferredRemapBlock = null;
+        queueSelectBlock(fallback);
+    }
+
+    private static boolean shouldForceDistributionFallback(Block block) {
+        if (block == null) return false;
+
+        try {
+            if (block.isAir() || block == Blocks.air) return true;
+        } catch (Throwable ignored) {
+        }
+
+        if (block == Blocks.spawn) return true;
+
+        String name = block.name == null ? "" : block.name.toLowerCase(Locale.ROOT);
+        return "air".equals(name) || "spawn".equals(name);
+    }
+
+    private static Block pickDistributionFallback() {
+        Block anchor = pickDistributionAnchor();
+        if (anchor != null && canSelect(anchor)) {
+            return anchor;
+        }
+
+        Seq<Block> blocks = getByCategorySkipTerrain(Category.distribution);
+        for (Block block : blocks) {
+            if (block != null && canSelect(block)) {
+                return block;
+            }
+        }
+
+        return null;
+    }
+
+    private static String formatPlacementVanillaCombo(Object pf, Block display, boolean skipTerrainOrder) {
+        if (pf == null || display == null) return "";
+
+        try {
+            Category cat = (Category) fieldCurrentCategory.get(pf);
+            if (cat == null) return "";
+            if (skipTerrainOrder && isTerrainBlock(display)) return "";
+
+            Seq<Block> blocks = skipTerrainOrder ? getByCategorySkipTerrain(cat) : getByCategoryWithTerrain(cat);
+            int index = indexOf(blocks, display);
+            return index >= 0 ? formatVanillaKeyCombo(pf, cat, index) : "";
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private static String formatPlacementNumberCombo(Object pf, Block display, boolean skipTerrainOrder) {
+        if (pf == null || display == null) return "";
+
+        try {
+            Category cat = (Category) fieldCurrentCategory.get(pf);
+            if (cat == null) return "";
+            if (skipTerrainOrder && isTerrainBlock(display)) return "";
+
+            Seq<Block> blocks = skipTerrainOrder ? getByCategorySkipTerrain(cat) : getByCategoryWithTerrain(cat);
+            int index = indexOf(blocks, display);
+            return index >= 0 ? formatNumberCombo(cat, index) : "";
+        } catch (Throwable ignored) {
+            return "";
         }
     }
 
@@ -763,12 +965,17 @@ public class BetterHotKeyFeature {
         bhkOverlayCustom.setWrap(true);
         bhkOverlayCustom.setAlignment(Align.left);
 
+        bhkOverlayNumber = new Label("");
+        bhkOverlayNumber.setWrap(true);
+        bhkOverlayNumber.setAlignment(Align.left);
+
         bhkOverlayOccupied = new Label("");
         bhkOverlayOccupied.setWrap(true);
         bhkOverlayOccupied.setAlignment(Align.left);
 
         // Keep this overlay independent of layout; keep it compact.
         bhkOverlay.add(bhkOverlayCustom).maxWidth(220f).left().row();
+        bhkOverlay.add(bhkOverlayNumber).maxWidth(220f).left().row();
         bhkOverlay.add(bhkOverlayOccupied).maxWidth(220f).left();
     }
 
@@ -814,6 +1021,7 @@ public class BetterHotKeyFeature {
             }
 
             if (isTerrainBlock(block)) continue;
+            if (!canSelect(block)) continue;
             out.add(block);
         }
         return out;
@@ -1002,15 +1210,23 @@ public class BetterHotKeyFeature {
             if (currentOrder.isEmpty()) return;
 
             Seq<String> desiredOrder = new Seq<>();
-            for (Block block : content.blocks()) {
-                if (block.category != cat) continue;
-                if (!block.isVisible()) continue;
-                if (!canSelect(block)) continue;
-                desiredOrder.add(block.name);
+            if (keepOrder) {
+                for (Block block : content.blocks()) {
+                    if (block.category != cat) continue;
+                    if (!block.isVisible()) continue;
+                    if (!canSelect(block)) continue;
+                    desiredOrder.add(block.name);
+                }
+                if (desiredOrder.size != currentOrder.size) return;
+            } else {
+                desiredOrder.addAll(currentOrder);
             }
 
-            if (desiredOrder.size != currentOrder.size) return;
-            if (isSameOrder(currentOrder, desiredOrder)) return;
+            int currentColumns = detectBuildMenuColumns(table);
+            int targetColumns = resolveBuildMenuColumns(currentColumns);
+            if (targetColumns <= 0) targetColumns = 4;
+
+            if (isSameOrder(currentOrder, desiredOrder) && currentColumns == targetColumns) return;
 
             table.clear();
             int index = 0;
@@ -1019,16 +1235,44 @@ public class BetterHotKeyFeature {
                 if (actor == null) continue;
 
                 table.add(actor).size(46f);
-                if (++index % 4 == 0) table.row();
+                if (++index % targetColumns == 0) table.row();
             }
 
-            if (index < 4) {
-                for (int i = 0; i < 4 - index; i++) {
+            int remainder = index % targetColumns;
+            if (index > 0 && remainder != 0) {
+                for (int i = 0; i < targetColumns - remainder; i++) {
                     table.add().size(46f);
                 }
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    private static int detectBuildMenuColumns(Table table) {
+        if (table == null) return 4;
+
+        int detected = 0;
+        int current = 0;
+        for (Cell<?> cell : table.getCells()) {
+            Element actor = cell.get();
+            if (actor != null && actor.name != null && actor.name.startsWith("block-")) {
+                current++;
+            }
+            if (cell.isEndRow()) {
+                if (current > 0) detected = Math.max(detected, current);
+                current = 0;
+            }
+        }
+
+        if (current > 0) detected = Math.max(detected, current);
+        return detected > 0 ? detected : 4;
+    }
+
+    private static int resolveBuildMenuColumns(int detectedColumns) {
+        if (menuColumns > 0) {
+            return Math.min(menuColumns, 12);
+        }
+        return detectedColumns > 0 ? detectedColumns : 4;
     }
 
     private static boolean isSameOrder(Seq<String> a, Seq<String> b) {
@@ -1235,6 +1479,76 @@ public class BetterHotKeyFeature {
         }
     }
 
+    private static void updateBuildMenuHotkeyBadges() {
+        if (ui == null || ui.hudfrag == null || ui.hudfrag.blockfrag == null) return;
+        if (state == null || !state.isGame()) return;
+
+        rebuildCompiledBindings();
+        tryInitReflection();
+        if (!reflectReady) return;
+
+        try {
+            Object pf = ui.hudfrag.blockfrag;
+            Object tableObj = fieldBlockTable.get(pf);
+            Object catObj = fieldCurrentCategory.get(pf);
+            if (!(tableObj instanceof Table) || !(catObj instanceof Category)) return;
+
+            Table table = (Table) tableObj;
+            Category cat = (Category) catObj;
+            for (Cell<?> cell : table.getCells()) {
+                Element actor = cell.get();
+                if (!(actor instanceof ImageButton) || actor.name == null || !actor.name.startsWith("block-")) continue;
+
+                ImageButton button = (ImageButton) actor;
+                Label badge = findOrCreateBuildHotkeyBadge(button);
+                String badgeText = enabled && showIconHotkeys ? buildBlockHotkeyBadgeText(pf, actor.name.substring("block-".length())) : "";
+
+                if (badgeText == null || badgeText.isEmpty()) {
+                    badge.visible = false;
+                    continue;
+                }
+
+                badge.setText(badgeText);
+                badge.setColor(iconHotkeyColor);
+                badge.setFontScale(toRenderableFontScale(badgeFontScale));
+                badge.invalidateHierarchy();
+                badge.pack();
+                badge.setPosition(Math.max(1f, button.getWidth() - badge.getPrefWidth() - 1f), 1f);
+                badge.toFront();
+                badge.visible = true;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static Label findOrCreateBuildHotkeyBadge(ImageButton button) {
+        for (Element child : button.getChildren()) {
+            if (child instanceof Label && nameBuildHotkeyBadge.equals(child.name)) {
+                return (Label) child;
+            }
+        }
+
+        Label badge = new Label("", Styles.outlineLabel);
+        badge.name = nameBuildHotkeyBadge;
+        badge.touchable = arc.scene.event.Touchable.disabled;
+        badge.setAlignment(Align.right);
+        badge.visible = false;
+        button.addChild(badge);
+        return badge;
+    }
+
+    private static String buildBlockHotkeyBadgeText(Object pf, String blockName) {
+        Block block = findBlockByName(blockName);
+        if (block == null) return "";
+
+        if (customEnabled) {
+            String custom = primaryCustomComboFor(block);
+            if (!custom.isEmpty()) return custom;
+        }
+
+        return formatPlacementNumberCombo(pf, block, skipTerrainHotkeys);
+    }
+
     private static boolean isNumberComboOccupiedByCustom(Block display, String vanillaCombo) {
         if (display == null || vanillaCombo == null || vanillaCombo.isEmpty()) return false;
 
@@ -1289,6 +1603,16 @@ public class BetterHotKeyFeature {
         return sb.toString();
     }
 
+    private static String primaryCustomComboFor(Block block) {
+        if (block == null || compiledBindings.isEmpty()) return "";
+
+        for (CompiledBinding b : compiledBindings) {
+            if (b == null || b.block != block) continue;
+            return "[" + shortKeyName(b.first) + "," + shortKeyName(b.second) + "]";
+        }
+        return "";
+    }
+
     private static String shortKeyName(KeyCode code) {
         if (code == null) return "?";
         String n = code.name();
@@ -1318,6 +1642,125 @@ public class BetterHotKeyFeature {
         int tensIndex = (blockIndex + 1) / 10 - 1;
         int onesIndex = blockIndex % 10;
         return "[" + catDigit + "," + digitForIndex(tensIndex) + "," + digitForIndex(onesIndex) + "]";
+    }
+
+    private static void showDisplayConfigDialog() {
+        BaseDialog dialog = new BaseDialog(Core.bundle.get("bhk.display.title"));
+        dialog.addCloseButton();
+        dialog.cont.defaults().growX().pad(6f);
+
+        TextField[] columnsField = new TextField[1];
+        TextField[] colorField = new TextField[1];
+        TextField[] badgeFontScaleField = new TextField[1];
+
+        dialog.cont.table(cols -> {
+            cols.left();
+            cols.add(Core.bundle.get("bhk.display.columns")).padRight(6f);
+            columnsField[0] = cols.field(String.valueOf(menuColumns), text -> {
+            }).width(180f).get();
+            columnsField[0].setMessageText("0");
+            cols.row();
+            cols.add(Core.bundle.get("bhk.display.columns.hint")).color(Color.lightGray).colspan(2).left().padTop(4f);
+        }).row();
+
+        dialog.cont.table(color -> {
+            color.left();
+            color.add(Core.bundle.get("bhk.display.color")).padRight(6f);
+            colorField[0] = color.field(Core.settings.getString(keyIconHotkeyColor, "ff4d4d"), text -> {
+            }).width(180f).get();
+            colorField[0].setMessageText("ff4d4d");
+
+            Label preview = color.add("[1,1]", Styles.outlineLabel).padLeft(12f).get();
+            preview.setColor(iconHotkeyColor);
+            colorField[0].changed(() -> preview.setColor(parseStoredColor(colorField[0].getText(), defaultIconHotkeyColor)));
+
+            color.row();
+            color.add(Core.bundle.get("bhk.display.color.hint")).color(Color.lightGray).colspan(3).left().padTop(4f);
+        }).row();
+
+        dialog.cont.table(font -> {
+            font.left();
+            font.add(Core.bundle.get("bhk.display.badge-font-scale")).padRight(6f);
+            badgeFontScaleField[0] = font.field(formatBadgeFontScale(badgeFontScale), text -> {
+            }).width(180f).get();
+            badgeFontScaleField[0].setMessageText(Strings.fixed(defaultBadgeFontScale, 2));
+
+            Label preview = font.add(Core.bundle.get("bhk.display.badge-font-preview"), Styles.outlineLabel).padLeft(12f).left().get();
+            preview.setColor(iconHotkeyColor);
+            applyLabelFontScale(preview, badgeFontScale);
+            badgeFontScaleField[0].changed(() -> applyLabelFontScale(preview, parseStoredBadgeFontScale(badgeFontScaleField[0].getText())));
+
+            font.row();
+            font.add(Core.bundle.get("bhk.display.badge-font-scale.hint")).color(Color.lightGray).colspan(3).left().padTop(4f);
+        }).row();
+
+        dialog.buttons.defaults().size(220f, 54f).pad(6f);
+        dialog.buttons.button("@ok", Icon.ok, () -> {
+            int parsedColumns = Strings.parseInt(columnsField[0].getText(), 0);
+            Core.settings.put(keyMenuColumns, Math.max(0, Math.min(parsedColumns, 12)));
+            Core.settings.put(keyIconHotkeyColor, normalizeStoredColor(colorField[0].getText()));
+            Core.settings.put(keyBadgeFontScale, formatBadgeFontScale(parseStoredBadgeFontScale(badgeFontScaleField[0].getText())));
+            refreshSettings();
+            updateBuildMenuHotkeyBadges();
+            dialog.hide();
+        });
+
+        dialog.show();
+    }
+
+    private static String normalizeStoredColor(String raw) {
+        String text = raw == null ? "" : raw.trim();
+        if (text.startsWith("#")) text = text.substring(1);
+        if (text.isEmpty()) return "ff4d4d";
+
+        if (text.length() == 6 || text.length() == 8) {
+            boolean ok = true;
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if ((c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F')) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return text;
+        }
+
+        return "ff4d4d";
+    }
+
+    private static Color parseStoredColor(String raw, Color fallback) {
+        try {
+            return Color.valueOf(normalizeStoredColor(raw));
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private static String formatBadgeFontScale(float scale) {
+        return Strings.fixed(sanitizeBadgeFontScale(scale), 2);
+    }
+
+    private static float parseStoredBadgeFontScale(String raw) {
+        if (raw == null) return defaultBadgeFontScale;
+
+        String text = raw.trim();
+        if (text.isEmpty()) return defaultBadgeFontScale;
+
+        try {
+            return sanitizeBadgeFontScale(Float.parseFloat(text));
+        } catch (Throwable ignored) {
+            return defaultBadgeFontScale;
+        }
+    }
+
+    private static float sanitizeBadgeFontScale(float scale) {
+        if (Float.isNaN(scale) || Float.isInfinite(scale)) return defaultBadgeFontScale;
+        return Math.max(0f, scale);
+    }
+
+    private static float toRenderableFontScale(float scale) {
+        float sanitized = sanitizeBadgeFontScale(scale);
+        return sanitized <= 0f ? 0.0001f : sanitized;
     }
 
     private static void showSkipTerrainIgnoreDialog() {

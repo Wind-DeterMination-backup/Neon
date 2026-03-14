@@ -3,7 +3,7 @@ plugins{
 }
 
 group = "bektools"
-version = "6.0.2"
+version = "6.2.0"
 
 java{
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -36,6 +36,8 @@ dependencies{
         // Standalone build: fetch Mindustry core from JitPack.
         compileOnly "com.github.Anuken.MindustryJitpack:core:$mindustryVersion"
     }
+
+    runtimeOnly "org.xerial:sqlite-jdbc:3.46.1.3"
 }
 
 tasks.withType(JavaCompile).configureEach{
@@ -175,6 +177,9 @@ tasks.register("jarMerged", Jar){
     archiveFileName = "${mergedArchiveBase}.jar"
     destinationDirectory = layout.buildDirectory.dir("libs")
     from(sourceSets.main.output)
+    from({ configurations.runtimeClasspath.collect{ zipTree(it) } }){
+        exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+    }
     from(androidDexOutDir){
         include "classes.dex"
     }
@@ -243,3 +248,5 @@ tasks.register("deploy"){
     dependsOn tasks.named("jarMerged")
     dependsOn tasks.named("zipMerged")
 }
+
+

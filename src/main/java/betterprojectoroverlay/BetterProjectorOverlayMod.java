@@ -11,7 +11,6 @@ import static mindustry.Vars.ui;
 
 public class BetterProjectorOverlayMod extends Mod {
 
-    /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
 
     private static boolean settingsAdded;
@@ -27,10 +26,13 @@ public class BetterProjectorOverlayMod extends Mod {
         Events.on(EventType.ClientLoadEvent.class, e -> {
             if (settingsAdded) return;
             settingsAdded = true;
-            if (bekBundled) return;
-            if (ui == null || ui.settings == null) return;
 
-            ui.settings.addCategory("@settings.bpo", Icon.map, BetterProjectorOverlayFeature::buildSettings);
+            GithubUpdateCheck.applyDefaults();
+
+            if (ui != null && ui.settings != null && !bekBundled) {
+                ui.settings.addCategory("@settings.bpo", Icon.map, BetterProjectorOverlayMod::bekBuildSettings);
+            }
+            GithubUpdateCheck.checkOnce();
         });
     }
 }

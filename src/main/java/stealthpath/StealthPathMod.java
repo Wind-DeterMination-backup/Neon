@@ -51,6 +51,7 @@ import mindustry.entities.bullet.ContinuousBulletType;
 import mindustry.type.Liquid;
 import mindustry.world.Tile;
 import mindustry.world.Block;
+import mindustry.world.blocks.defense.BaseShield;
 import mindustry.world.blocks.environment.Floor;
 import mindustry.world.blocks.defense.ForceProjector;
 import mindustry.world.blocks.defense.turrets.ContinuousTurret;
@@ -2184,7 +2185,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
         if(start == null || start.unit == null) return;
 
         int threatMode = Core.settings.getInt(keyThreatMode, threatModeGround);
-        boolean moveFlying = shouldTreatPathAsFlying(start.unit, start.pathUnits);
+        boolean moveFlying = threatMode == threatModeAir;
         boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
         boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
         boolean includeUnits = autoMode != autoModeOff || includeUnitsFromLast();
@@ -2510,20 +2511,6 @@ public class StealthPathMod extends mindustry.mod.Mod{
         return 0.0001f;
     }
 
-    private static boolean shouldTreatPathAsFlying(Unit fallbackUnit, Seq<Unit> units){
-        boolean hasValidUnit = false;
-        if(units != null && units.any()){
-            for(int i = 0; i < units.size; i++){
-                Unit u = units.get(i);
-                if(u == null || !u.isAdded() || u.dead()) continue;
-                hasValidUnit = true;
-                if(!u.isFlying()) return false;
-            }
-        }
-        if(hasValidUnit) return true;
-        return fallbackUnit != null && fallbackUnit.isFlying();
-    }
-
     private void computePath(boolean includeUnits, boolean showToasts){
         long planStarted = System.nanoTime();
         clearPaths();
@@ -2546,7 +2533,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
                 if(showToasts) showToast("@sp.toast.no-path", 2.5f);
                 return;
             }
-            boolean moveFlying = shouldTreatPathAsFlying(unit, singletonUnitSeq(unit));
+            boolean moveFlying = threatMode == threatModeAir;
             boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
             boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
 
@@ -2566,7 +2553,7 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
         Unit unit = start.unit;
 
-        boolean moveFlying = shouldTreatPathAsFlying(unit, start.pathUnits);
+        boolean moveFlying = threatMode == threatModeAir;
         boolean threatsAir = threatMode == threatModeAir || threatMode == threatModeBoth;
         boolean threatsGround = threatMode == threatModeGround || threatMode == threatModeBoth;
 
@@ -3874,10 +3861,11 @@ public class StealthPathMod extends mindustry.mod.Mod{
             float mr = Math.max(0f, t.minRange);
             float mr2 = mr * mr;
 
-            int minX = clamp((int)Math.ceil((t.x - r) / tilesize), 0, map.width - 1);
-            int maxX = clamp((int)Math.floor((t.x + r) / tilesize), 0, map.width - 1);
-            int minY = clamp((int)Math.ceil((t.y - r) / tilesize), 0, map.height - 1);
-            int maxY = clamp((int)Math.floor((t.y + r) / tilesize), 0, map.height - 1);
+            // Distance is checked at tile centers; pad bounds so center candidates are never missed.
+            int minX = clamp((int)Math.floor((t.x - r) / tilesize) - 1, 0, map.width - 1);
+            int maxX = clamp((int)Math.ceil((t.x + r) / tilesize) + 1, 0, map.width - 1);
+            int minY = clamp((int)Math.floor((t.y - r) / tilesize) - 1, 0, map.height - 1);
+            int maxY = clamp((int)Math.ceil((t.y + r) / tilesize) + 1, 0, map.height - 1);
 
             for(int ty = minY; ty <= maxY; ty++){
                 float wy = tileToWorld(ty) + tilesize / 2f;
@@ -3993,21 +3981,27 @@ public class StealthPathMod extends mindustry.mod.Mod{
 
             float r = 0f;
 
-            // Campaign/editor base shields that repel/kill units inside their radius.
-            // See Mindustry core: mindustry.world.blocks.defense.BaseShield
-            if(b.block != null && b.block.name != null){
+            if(b.block instanceof BaseShield && b instanceof BaseShield.BaseShieldBuild){
+                BaseShield.BaseShieldBuild shield = (BaseShield.BaseShieldBuild)b;
+                r = shield.radius() + inflate;
+            }
+
+            // Standard force projectors only block when their shield is actually up.
+            if(r <= 0.001f && b.block instanceof ForceProjector && b instanceof ForceProjector.ForceBuild){
+                ForceProjector.ForceBuild fb = (ForceProjector.ForceBuild)b;
+                if(!fb.broken && fb.realRadius() > 1f){
+                    r = fb.realRadius() + inflate;
+                }
+            }
+
+            // Fallback for older content names/modded aliases if the runtime build class is unavailable.
+            if(r <= 0.001f && b.block != null && b.block.name != null){
                 String name = b.block.name;
                 float base = name.equals("shield-projector") ? 200f : (name.equals("large-shield-projector") ? 400f : 0f);
                 if(base > 0.001f){
                     float eff = Mathf.clamp(b.efficiency, 0f, 1f);
                     r = base * eff + inflate;
                 }
-            }
-
-            // Standard force projectors (kept for compatibility).
-            if(r <= 0.001f && b.block instanceof ForceProjector && b instanceof ForceProjector.ForceBuild){
-                ForceProjector.ForceBuild fb = (ForceProjector.ForceBuild)b;
-                r = fb.realRadius() + inflate;
             }
 
             if(r <= 0.001f) continue;
@@ -4269,37 +4263,65 @@ public class StealthPathMod extends mindustry.mod.Mod{
         float timeScale = Math.max(0f, tb.timeScale());
         if(efficiency <= 0.0001f || timeScale <= 0.0001f) return 0f;
 
+        float heatMul = turretHeatEfficiency(tb, turret);
+        if(heatMul <= 0.0001f) return 0f;
+
         if(turret instanceof LaserTurret){
-            return estimateLaserTurretThreatDps(tb, (LaserTurret)turret, ammo, ruleScale, efficiency, timeScale);
+            return estimateLaserTurretThreatDps(tb, (LaserTurret)turret, ammo, ruleScale, efficiency, timeScale, heatMul);
         }
         if(turret instanceof ContinuousTurret){
-            return estimateContinuousTurretThreatDps(tb, (ContinuousTurret)turret, ammo, ruleScale, efficiency, timeScale);
+            return estimateContinuousTurretThreatDps(tb, (ContinuousTurret)turret, ammo, ruleScale, efficiency, timeScale, heatMul);
         }
 
         float damagePerShot = Math.max(0f, ammo.estimateDPS());
         if(damagePerShot <= 0.0001f) return 0f;
 
-        float reloadRate = efficiency * timeScale;
-        reloadRate += Math.max(0f, turretReloadCoolantBonus(tb, turret.coolantMultiplier, turret.coolant) * timeScale);
+        float coolantBonus = Math.max(0f, turretReloadCoolantBonus(tb, turret.coolantMultiplier, turret.coolant));
+        float reloadRate = efficiency * timeScale * (1f + coolantBonus);
         reloadRate *= Math.max(0f, ammo.reloadMultiplier);
 
         float shotsPerSecond = Math.max(0f, turret.shoot.shots) * reloadRate * 60f / Math.max(0.0001f, turret.reload);
-        float dps = shotsPerSecond * damagePerShot * ruleScale;
+        float dps = shotsPerSecond * damagePerShot * heatMul * ruleScale;
         return Math.max(0f, dps);
     }
 
-    private static float estimateLaserTurretThreatDps(Turret.TurretBuild tb, LaserTurret turret, BulletType ammo, float ruleScale, float efficiency, float timeScale){
+    private static float estimateLaserTurretThreatDps(Turret.TurretBuild tb, LaserTurret turret, BulletType ammo, float ruleScale, float efficiency, float timeScale, float heatMul){
         float beamDps = estimateContinuousBulletDps(ammo);
         if(beamDps <= 0.0001f){
             beamDps = Math.max(0f, ammo.estimateDPS());
         }
         if(beamDps <= 0.0001f) return 0f;
 
-        float reloadRate = Math.max(0.0001f, efficiency * timeScale);
-        reloadRate += Math.max(0f, turretReloadCoolantBonus(tb, turret.coolantMultiplier, turret.coolant) * timeScale);
-        float reloadTicks = turret.reload / Math.max(0.0001f, reloadRate);
+        float reloadTicks;
+        if(turret.coolant == null){
+            // LaserTurretBuild falls back to edelta() when no coolant consumer exists.
+            float reloadRate = Math.max(0.0001f, efficiency * timeScale);
+            reloadTicks = turret.reload / reloadRate;
+        }else{
+            // LaserTurretBuild cooldown progression is driven by coolant consumption (delta(), not edelta()).
+            if(tb == null || tb.liquids == null) return 0f;
 
-        float fireTicks = Math.max(1f, turret.shootDuration);
+            Liquid used = null;
+            Liquid current = tb.liquids.current();
+            if(current != null && tb.liquids.get(current) > 0.0001f){
+                used = current;
+            }else{
+                used = pickConsumedCoolantLiquid(tb, turret.coolant);
+            }
+            if(used == null) return 0f;
+
+            float maxUsed = Math.max(0f, turret.coolant.amount);
+            if(maxUsed <= 0.0001f) return 0f;
+
+            float have = Math.max(0f, tb.liquids.get(used));
+            float baseUsed = Math.min(have, maxUsed);
+            float coolingPerTick = baseUsed * Math.max(0f, used.heatCapacity) * Math.max(0f, turret.coolantMultiplier);
+            if(coolingPerTick <= 0.0001f) return 0f;
+
+            reloadTicks = turret.reload / Math.max(0.0001f, coolingPerTick * timeScale);
+        }
+
+        float fireTicks = Math.max(1f, turret.shootDuration * efficiency / Math.max(0.0001f, timeScale));
         float duty = fireTicks / Math.max(1f, fireTicks + reloadTicks);
         float dps = beamDps * duty;
 
@@ -4307,10 +4329,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
             dps *= timeScale;
         }
 
-        return Math.max(0f, dps * ruleScale);
+        return Math.max(0f, dps * heatMul * ruleScale);
     }
 
-    private static float estimateContinuousTurretThreatDps(Turret.TurretBuild tb, ContinuousTurret turret, BulletType ammo, float ruleScale, float efficiency, float timeScale){
+    private static float estimateContinuousTurretThreatDps(Turret.TurretBuild tb, ContinuousTurret turret, BulletType ammo, float ruleScale, float efficiency, float timeScale, float heatMul){
         float dps = estimateContinuousBulletDps(ammo);
         if(dps <= 0.0001f){
             dps = Math.max(0f, tb.estimateDps());
@@ -4324,7 +4346,15 @@ public class StealthPathMod extends mindustry.mod.Mod{
             dps *= timeScale;
         }
 
-        return Math.max(0f, dps * ruleScale);
+        return Math.max(0f, dps * heatMul * ruleScale);
+    }
+
+    private static float turretHeatEfficiency(Turret.TurretBuild tb, Turret turret){
+        if(tb == null || turret == null || turret.heatRequirement <= 0.0001f) return 1f;
+
+        float min = tb.cheating() ? 1f : 0f;
+        float heat = tb.heatReq / Math.max(0.0001f, turret.heatRequirement);
+        return Mathf.clamp(heat, min, Math.max(min, turret.maxHeatEfficiency));
     }
 
     private static float estimateTractorThreatDps(TractorBeamTurret.TractorBeamBuild tb, TractorBeamTurret turret){
@@ -5003,12 +5033,20 @@ public class StealthPathMod extends mindustry.mod.Mod{
             int idx = goals.items[i];
             int gx = idx % map.width;
             int gy = idx / map.width;
-            float dst = Mathf.dst(x, y, gx, gy);
+            float dst = octileDistance(x, y, gx, gy);
             if(dst < best) best = dst;
         }
 
         if(!Float.isFinite(best)) return 0f;
-        return mode == PathMode.minDamage ? best * 0.00001f : best;
+        return mode == PathMode.minDamage ? best * minDamageDistanceBias : best;
+    }
+
+    private static float octileDistance(int x1, int y1, int x2, int y2){
+        int dx = Math.abs(x2 - x1);
+        int dy = Math.abs(y2 - y1);
+        int diag = Math.min(dx, dy);
+        int straight = Math.max(dx, dy) - diag;
+        return diag * Mathf.sqrt2 + straight;
     }
 
     private static IntSeq reconstruct(int[] parent, int endIdx){

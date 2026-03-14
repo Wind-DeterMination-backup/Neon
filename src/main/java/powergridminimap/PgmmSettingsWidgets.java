@@ -10,8 +10,8 @@ import arc.scene.ui.Label;
 import arc.scene.ui.Slider;
 import arc.scene.ui.TextField;
 import arc.scene.ui.layout.Table;
-import bektools.ui.VscodeSettingsStyle;
 import mindustry.gen.Tex;
+import mindustry.graphics.Pal;
 import mindustry.ui.Styles;
 import mindustry.ui.dialogs.SettingsMenuDialog;
 
@@ -44,20 +44,20 @@ final class PgmmSettingsWidgets{
         }
 
         @Override
-    public void add(SettingsMenuDialog.SettingsTable table){
-        table.row();
-        table.table(VscodeSettingsStyle.headerBackground(), t -> {
-            t.left().margin(8f);
-            if(icon != null){
-                t.image(icon).size(18f).padRight(6f);
-            }
-            String text = titleKeyOrText.startsWith("@")
-                ? Core.bundle.get(titleKeyOrText.substring(1))
-                : titleKeyOrText;
-            t.add(text).color(VscodeSettingsStyle.accentColor()).left().growX().wrap();
-        }).padTop(10f).left().growX();
-        table.row();
-    }
+        public void add(SettingsMenuDialog.SettingsTable table){
+            table.row();
+            table.table(Styles.black3, t -> {
+                t.left().margin(8f);
+                if(icon != null){
+                    t.image(icon).size(18f).padRight(6f);
+                }
+                String text = titleKeyOrText.startsWith("@")
+                    ? Core.bundle.get(titleKeyOrText.substring(1))
+                    : titleKeyOrText;
+                t.add(text).color(Pal.accent).left().growX().wrap();
+            }).padTop(10f).left().growX();
+            table.row();
+        }
     }
 
     static final class IconCheckSetting extends SettingsMenuDialog.SettingsTable.Setting{
@@ -84,7 +84,7 @@ final class PgmmSettingsWidgets{
                 if(changed != null) changed.get(box.isChecked());
             });
 
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 if(icon != null) t.image(icon).size(20f).padRight(8f);
                 t.add(box).left().growX().minWidth(0f);
@@ -134,11 +134,7 @@ final class PgmmSettingsWidgets{
             });
             slider.change();
 
-            table.table(VscodeSettingsStyle.cardBackground(), row -> {
-                row.left().margin(4f);
-                row.stack(slider, content).width(prefWidth() - 8f).left();
-            }).width(prefWidth()).left().padTop(6f);
-            addDesc(slider);
+            addDesc(table.stack(slider, content).width(prefWidth()).left().padTop(6f).get());
             table.row();
         }
     }
@@ -158,7 +154,7 @@ final class PgmmSettingsWidgets{
         @Override
         public void add(SettingsMenuDialog.SettingsTable table){
             final TextField[] fieldRef = {null};
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 if(icon != null) t.image(icon).size(20f).padRight(8f);
 
@@ -205,7 +201,7 @@ final class PgmmSettingsWidgets{
                 Core.settings.put(name, clamped);
             }
 
-            table.table(VscodeSettingsStyle.cardBackground(), t -> {
+            table.table(Tex.button, t -> {
                 t.left().margin(10f);
                 if(icon != null) t.image(icon).size(20f).padRight(8f);
 
