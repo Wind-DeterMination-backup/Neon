@@ -3,7 +3,7 @@ plugins{
 }
 
 group = "bektools"
-version = "6.2.0"
+version = "6.3.0"
 
 java{
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -136,6 +136,7 @@ tasks.register("d8InputJar", Jar){
     archiveFileName = "${project.name}-d8-input.jar"
     destinationDirectory = layout.buildDirectory.dir("d8-input")
     from(sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.register("dexAndroid", Exec){

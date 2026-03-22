@@ -21,6 +21,7 @@ import powergridminimap.PowerGridMinimapMod;
 import radialbuildmenu.RadialBuildMenuMod;
 import serverplayerdatabase.ServerPlayerDataBaseMod;
 import stealthpath.StealthPathMod;
+import updatescheme.UpdateSchemeMod;
 
 import static mindustry.Vars.ui;
 
@@ -36,6 +37,7 @@ public class BekToolsMod extends Mod{
     private final BetterHotKeyMod betterHotKey;
     private final ModUpdaterMod modUpdater;
     private final HiddenMessageMod hiddenMessage;
+    private final UpdateSchemeMod updateScheme;
 
     public BekToolsMod(){
         PowerGridMinimapMod.bekBundled = true;
@@ -48,6 +50,7 @@ public class BekToolsMod extends Mod{
         BetterHotKeyMod.bekBundled = true;
         ModUpdaterMod.bekBundled = true;
         HiddenMessageMod.bekBundled = true;
+        UpdateSchemeMod.bekBundled = true;
 
         pgmm = new PowerGridMinimapMod();
         stealthPath = new StealthPathMod();
@@ -67,6 +70,8 @@ public class BekToolsMod extends Mod{
         modUpdater.init();
         hiddenMessage = new HiddenMessageMod();
         hiddenMessage.init();
+        updateScheme = new UpdateSchemeMod();
+        updateScheme.init();
         CustomMarkerFeature.init();
         BetterScreenShotFeature.init();
 
@@ -100,9 +105,10 @@ public class BekToolsMod extends Mod{
                 st.pref(new RbmStyle.SubHeaderSetting("@bektools.section.bme.none"));
             });
             addGroup(table, Core.bundle.get("bektools.section.bpo", "Better Projector Overlay"), Icon.power, BetterProjectorOverlayMod::bekBuildSettings);
-            addGroup(table, Core.bundle.get("bektools.section.bls", "Better Logistics Speed"), Icon.rightOpen, betterLogisticsSpeed::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.bls", "Better Logistics Speed"), Icon.rightOpen, BetterLogisticsSpeedMod::bekBuildSettings);
             addGroup(table, Core.bundle.get("bektools.section.bhk", "Better HotKey"), Icon.settingsSmall, betterHotKey::bekBuildSettings);
-            addGroup(table, Core.bundle.get("bektools.section.mu", "Mod Updater"), Icon.refresh, modUpdater::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.mu", "Mod Updater"), Icon.refresh, ModUpdaterMod::bekBuildSettings);
+            addGroup(table, Core.bundle.get("bektools.section.us", "UpdateScheme"), Icon.download, updateScheme::bekBuildSettings);
             addGroup(table, Core.bundle.get("bektools.section.hm", "Hidden Message"), Icon.chat, st -> {
                 st.pref(new RbmStyle.SubHeaderSetting("@bektools.section.hm.none"));
             });

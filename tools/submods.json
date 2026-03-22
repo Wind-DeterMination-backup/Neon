@@ -102,6 +102,16 @@
       "mainClassFile": "BetterProjectorOverlayMod.java",
       "bundlesDir": "src/main/resources/bundles",
       "injectBekHooks": false
+    },
+    {
+      "id": "us",
+      "name": "UpdateScheme",
+      "localPath": "../UpdateScheme",
+      "javaPackageDir": "src/main/java/updatescheme",
+      "mainClassFile": "UpdateSchemeMod.java",
+      "bundlesDir": "src/main/resources/bundles",
+      "injectBekHooks": false,
+      "allowNoGit": true
     }
   ]
 }

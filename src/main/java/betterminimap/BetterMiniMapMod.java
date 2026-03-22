@@ -5,17 +5,15 @@ import betterminimap.features.BetterMiniMapFeature;
 import mindustry.game.EventType;
 import mindustry.gen.Icon;
 import mindustry.mod.Mod;
-import mindustry.ui.dialogs.SettingsMenuDialog;
 
 import static mindustry.Vars.ui;
 
 public class BetterMiniMapMod extends Mod {
-
     public static boolean bekBundled = false;
 
     private static boolean settingsAdded;
 
-    public static void bekBuildSettings(SettingsMenuDialog.SettingsTable table) {
+    public static void bekBuildSettings(mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable table) {
         BetterMiniMapFeature.buildSettings(table);
     }
 
@@ -29,8 +27,8 @@ public class BetterMiniMapMod extends Mod {
 
             GithubUpdateCheck.applyDefaults();
 
-            if (ui != null && ui.settings != null && !bekBundled) {
-                ui.settings.addCategory("@settings.betterminimap", Icon.map, BetterMiniMapMod::bekBuildSettings);
+            if (!bekBundled) {
+                ui.settings.addCategory("@settings.betterminimap", Icon.map, BetterMiniMapFeature::buildSettings);
             }
             GithubUpdateCheck.checkOnce();
         });

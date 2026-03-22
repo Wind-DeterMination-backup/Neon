@@ -87,6 +87,11 @@ public class StealthPathMod extends mindustry.mod.Mod{
     /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
 
+    private static final String overlayWindowModeName = "stealthpath-mode";
+    private static final String overlayWindowDamageName = "stealthpath-damage";
+    private static final String overlayWindowControlsName = "stealthpath-controls";
+    private static final String overlayWindowHoverDpsName = "stealthpath-hoverdps";
+
 
     private static final String keyEnabled = "sp-enabled";
     private static final String keyProMode = "sp-pro-mode";
@@ -5231,42 +5236,42 @@ public class StealthPathMod extends mindustry.mod.Mod{
                 if(xModeWindow == null){
                     try{ overlayModeContent.remove(); }catch(Throwable ignored){}
                     xModeWindow = xOverlayUi.registerWindow(
-                        "stealthpath-mode",
+                        overlayWindowModeName,
                         overlayModeContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowMode, true)
                     );
                     xOverlayUi.tryConfigureWindow(xModeWindow, false, true);
-                    if(enabled && showMode) xOverlayUi.setEnabledAndPinned(xModeWindow, true, false);
+                    if(enabled && showMode && !hasStoredOverlayWindowState(overlayWindowModeName)) xOverlayUi.setEnabledAndPinned(xModeWindow, true, false);
                 }
                 if(xDamageWindow == null){
                     try{ overlayDamageContent.remove(); }catch(Throwable ignored){}
                     xDamageWindow = xOverlayUi.registerWindow(
-                        "stealthpath-damage",
+                        overlayWindowDamageName,
                         overlayDamageContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowDamage, true)
                     );
                     xOverlayUi.tryConfigureWindow(xDamageWindow, false, true);
-                    if(enabled && showDamage) xOverlayUi.setEnabledAndPinned(xDamageWindow, true, false);
+                    if(enabled && showDamage && !hasStoredOverlayWindowState(overlayWindowDamageName)) xOverlayUi.setEnabledAndPinned(xDamageWindow, true, false);
                 }
                 if(xControlsWindow == null){
                     try{ overlayControlsContent.remove(); }catch(Throwable ignored){}
                     xControlsWindow = xOverlayUi.registerWindow(
-                        "stealthpath-controls",
+                        overlayWindowControlsName,
                         overlayControlsContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowControls, true)
                     );
                     xOverlayUi.tryConfigureWindow(xControlsWindow, false, true);
-                    if(enabled && showControls) xOverlayUi.setEnabledAndPinned(xControlsWindow, true, false);
+                    if(enabled && showControls && !hasStoredOverlayWindowState(overlayWindowControlsName)) xOverlayUi.setEnabledAndPinned(xControlsWindow, true, false);
                 }
                 if(xHoverDpsWindow == null){
                     try{ overlayHoverDpsContent.remove(); }catch(Throwable ignored){}
                     xHoverDpsWindow = xOverlayUi.registerWindow(
-                        "stealthpath-hoverdps",
+                        overlayWindowHoverDpsName,
                         overlayHoverDpsContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyDebugHoverTurretDps, false)
                     );
                     xOverlayUi.tryConfigureWindow(xHoverDpsWindow, false, true);
-                    if(enabled && showHoverDps) xOverlayUi.setEnabledAndPinned(xHoverDpsWindow, true, false);
+                    if(enabled && showHoverDps && !hasStoredOverlayWindowState(overlayWindowHoverDpsName)) xOverlayUi.setEnabledAndPinned(xHoverDpsWindow, true, false);
                 }
                 return;
             }catch(Throwable ignored){
@@ -5282,6 +5287,10 @@ public class StealthPathMod extends mindustry.mod.Mod{
         syncFallbackHud(overlayDamageContent, "sp-ov-dmg", 8f, -84f, enabled && showDamage);
         syncFallbackHud(overlayControlsContent, "sp-ov-ctl", 8f, -152f, enabled && showControls);
         syncFallbackHudRight(overlayHoverDpsContent, "sp-ov-hover", -8f, -8f, enabled && showHoverDps);
+    }
+
+    private boolean hasStoredOverlayWindowState(String windowName){
+        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private void syncFallbackHud(Table content, String name, float x, float yFromTop, boolean visible){

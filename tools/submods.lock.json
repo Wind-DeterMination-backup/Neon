@@ -1,33 +1,33 @@
 {
   "schema": 1,
-  "generatedAtUtc": "2026-03-12T16:16:27Z",
+  "generatedAtUtc": "2026-03-22T12:15:09Z",
   "mods": {
     "pgmm": {
-      "head": "fd1ac9ebc940eba08430412a96960ef1f9970a1e",
+      "head": "dd25e2a5bc655cb1a593d2b3cd2a103bef077ed5",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\Power-Grid-Minimap-repo-clone"
     },
     "sp": {
-      "head": "80158ccbd14134fddf5208cc4842f3f03d651bd1",
+      "head": "0be873aa16a482c279f8bbe6cad484d31e087d34",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\StealthPath"
     },
     "rbm": {
-      "head": "b3c54287be9829b54b3bff7eff43e116acd4ac0f",
+      "head": "108f7bce4813a309ebd45f2cbe39a436fbfff4ed",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\Radial-Build-Menu-hud-"
     },
     "bmm": {
-      "head": "63ea50e2817af9fed788a87064608f95726c78c6",
+      "head": "df9a1294cd1bf7de3ba781879e330caf7578d33c",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\betterMiniMap"
     },
     "spdb": {
-      "head": "nogit-b36c5fb97552a862cdfb04e871817f6f5761dbc2",
+      "head": "1237fe0aeb03f467b8b21e8cb024b270debed20b",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\ServerPlayerDataBase"
     },
     "bme": {
-      "head": "73cdf8e1887e86c3d8bd2f48d1e9fd73a5f91158",
+      "head": "8d1564a02268e7fbea9c4e3613fd4bb65461f94a",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\BetterMapEditor"
     },
     "bpo": {
-      "head": "21f36164d41b1c51597aaf2781b53705f6c1d3cf",
+      "head": "fbf75fa72664235f029864f8bb1ec8f98d3976bf",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\BetterProjectorOverlay"
     },
     "bls": {
@@ -45,6 +45,10 @@
     "hm": {
       "head": "nogit-393f09b890f32aa9f8dc164fe1af57597b5b8acf",
       "localPath": "C:\\Users\\华硕\\Documents\\codex\\hiddenMessage"
+    },
+    "us": {
+      "head": "nogit-53044c734d0d2e5e6ab64f01d24782dfcaf3d0b3",
+      "localPath": "C:\\Users\\华硕\\Documents\\codex\\UpdateScheme"
     }
   }
 }

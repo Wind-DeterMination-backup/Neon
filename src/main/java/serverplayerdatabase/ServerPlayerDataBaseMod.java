@@ -67,7 +67,12 @@ import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 
 public class ServerPlayerDataBaseMod extends Mod{
+    /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
+
+    private static final String overlayQueryWindowName = "玩家数据库 / DB Query";
+    private static final String overlayDebugWindowName = "解析调试 / Parser Debug";
+
 
     private static final String keyCollect = "spdb-collect";
     private static final String keyRecordChat = "spdb-record-chat";
@@ -812,6 +817,7 @@ public class ServerPlayerDataBaseMod extends Mod{
         if(Vars.ui == null || Vars.ui.settings == null) return;
         if(bekBundled) return;
 
+
         Core.settings.defaults(keyCollect, true);
         Core.settings.defaults(keyRecordChat, false);
         Core.settings.defaults(keyAutoTrace, true);
@@ -819,7 +825,7 @@ public class ServerPlayerDataBaseMod extends Mod{
 
         Vars.ui.settings.addCategory("玩家数据库", Icon.zoom, this::bekBuildSettings);
     }
-
+    /** Populates a {@link mindustry.ui.dialogs.SettingsMenuDialog.SettingsTable} with this mod's settings. */
     public void bekBuildSettings(SettingsMenuDialog.SettingsTable table){
             table.pref(new SpdbSettingsWidgets.HeaderSetting("数据采集", Icon.zoom));
             table.pref(new SpdbSettingsWidgets.IconCheckSetting(keyCollect, true, Icon.add, null));
@@ -841,6 +847,7 @@ public class ServerPlayerDataBaseMod extends Mod{
         
     }
 
+
     private void ensureOverlayAttached(){
         if(Vars.headless || Vars.ui == null || Vars.ui.hudGroup == null) return;
         if(!overlayUI.isInstalled()) return;
@@ -849,19 +856,27 @@ public class ServerPlayerDataBaseMod extends Mod{
             overlayQueryContent = new OverlayQueryContent();
         }
         if(overlayQueryWindow == null){
-            overlayQueryWindow = overlayUI.registerWindow("玩家数据库 / DB Query", overlayQueryContent.root, () -> Vars.state.isGame());
+            overlayQueryWindow = overlayUI.registerWindow(overlayQueryWindowName, overlayQueryContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayQueryWindow, false, true);
-            overlayUI.setEnabledAndPinned(overlayQueryWindow, true, false);
+            if(!hasStoredOverlayWindowState(overlayQueryWindowName)){
+                overlayUI.setEnabledAndPinned(overlayQueryWindow, true, false);
+            }
         }
 
         if(debugContent == null){
             debugContent = new DebugContent();
         }
         if(overlayDebugWindow == null){
-            overlayDebugWindow = overlayUI.registerWindow("解析调试 / Parser Debug", debugContent.root, () -> Vars.state.isGame());
+            overlayDebugWindow = overlayUI.registerWindow(overlayDebugWindowName, debugContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayDebugWindow, false, true);
-            overlayUI.setEnabledAndPinned(overlayDebugWindow, false, false);
+            if(!hasStoredOverlayWindowState(overlayDebugWindowName)){
+                overlayUI.setEnabledAndPinned(overlayDebugWindow, false, false);
+            }
         }
+    }
+
+    private boolean hasStoredOverlayWindowState(String windowName){
+        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private boolean compactUi(){
@@ -4688,5 +4703,3 @@ public class ServerPlayerDataBaseMod extends Mod{
         }
     }
 }
-
-
