@@ -3,6 +3,7 @@ package bektools;
 import arc.Core;
 import arc.Events;
 import arc.util.CommandHandler;
+import arc.util.Log;
 import bettermapeditor.BetterMapEditorMod;
 import betterhotkey.BetterHotKeyMod;
 import betterminimap.BetterMiniMapMod;
@@ -26,6 +27,8 @@ import updatescheme.UpdateSchemeMod;
 import static mindustry.Vars.ui;
 
 public class BekToolsMod extends Mod{
+    private static final String spdbUnavailableMessage = "当前运行环境缺少 SPDB 所需的 Java/SQLite 组件，Neon 已跳过该模块以避免整体加载失败。";
+
     private final PowerGridMinimapMod pgmm;
     private final StealthPathMod stealthPath;
     private final RadialBuildMenuMod radialBuildMenu;
@@ -57,7 +60,13 @@ public class BekToolsMod extends Mod{
         radialBuildMenu = new RadialBuildMenuMod();
         betterMiniMap = new BetterMiniMapMod();
         betterMiniMap.init();
-        serverPlayerDataBase = new ServerPlayerDataBaseMod();
+        ServerPlayerDataBaseMod spdb = null;
+        try{
+            spdb = new ServerPlayerDataBaseMod();
+        }catch(Throwable t){
+            Log.err("Neon: failed to initialize bundled ServerPlayerDataBase module; continuing without it.", t);
+        }
+        serverPlayerDataBase = spdb;
         betterMapEditor = new BetterMapEditorMod();
         betterMapEditor.init();
         betterProjectorOverlay = new BetterProjectorOverlayMod();
@@ -87,7 +96,9 @@ public class BekToolsMod extends Mod{
         pgmm.registerClientCommands(handler);
         stealthPath.registerClientCommands(handler);
         radialBuildMenu.registerClientCommands(handler);
-        serverPlayerDataBase.registerClientCommands(handler);
+        if(serverPlayerDataBase != null){
+            serverPlayerDataBase.registerClientCommands(handler);
+        }
     }
 
     private void registerSettings(){
@@ -100,7 +111,13 @@ public class BekToolsMod extends Mod{
             addGroup(table, Core.bundle.get("bektools.section.bss", "Better ScreenShot (BSS core by Miner)"), Icon.map, BetterScreenShotFeature::buildSettings);
             addGroup(table, Core.bundle.get("bektools.section.rbm", "Radial Build Menu"), Icon.list, radialBuildMenu::bekBuildSettings);
             addGroup(table, Core.bundle.get("bektools.section.bmm", "betterMiniMap"), Icon.map, BetterMiniMapMod::bekBuildSettings);
-            addGroup(table, Core.bundle.get("bektools.section.spdb", "Server Player DataBase"), Icon.players, serverPlayerDataBase::bekBuildSettings);
+            if(serverPlayerDataBase != null){
+                addGroup(table, Core.bundle.get("bektools.section.spdb", "Server Player DataBase"), Icon.players, serverPlayerDataBase::bekBuildSettings);
+            }else{
+                addGroup(table, Core.bundle.get("bektools.section.spdb", "Server Player DataBase"), Icon.players, st -> {
+                    st.pref(new RbmStyle.SubHeaderSetting(spdbUnavailableMessage));
+                });
+            }
             addGroup(table, Core.bundle.get("bektools.section.bme", "Better Map Editor"), Icon.map, st -> {
                 st.pref(new RbmStyle.SubHeaderSetting("@bektools.section.bme.none"));
             });

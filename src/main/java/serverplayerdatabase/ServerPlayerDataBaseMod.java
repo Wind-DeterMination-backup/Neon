@@ -3683,7 +3683,7 @@ public class ServerPlayerDataBaseMod extends Mod{
 
     private static class ChatDatabase{
         private static final int maxCachedDays = 8;
-        private final SqliteChatBackend sqlite = new SqliteChatBackend();
+        private SqliteChatBackend sqlite;
         private boolean useSqlite;
 
         private final ObjectMap<String, Seq<ChatEntry>> dayEntries = new ObjectMap<>();
@@ -3706,7 +3706,9 @@ public class ServerPlayerDataBaseMod extends Mod{
         private int totalEntries;
 
         void loadStorage(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
-            if(sqlite.load(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer)){
+            Seq<String> sqliteFallbackIssues = new Seq<>();
+            sqlite = tryCreateSqliteBackend(sqliteFallbackIssues);
+            if(sqlite != null && sqlite.load(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer)){
                 useSqlite = true;
                 return;
             }
@@ -3722,6 +3724,11 @@ public class ServerPlayerDataBaseMod extends Mod{
             dirtyDates.clear();
             uidToDates.clear();
             integrityIssues.clear();
+            for(String issue : sqliteFallbackIssues){
+                if(issue != null && !issue.isEmpty() && !integrityIssues.contains(issue, false)){
+                    integrityIssues.add(issue);
+                }
+            }
             indexDirty = false;
             indexIntegrityState = integrityMissing;
             shardsChecked = 0;
@@ -3753,6 +3760,19 @@ public class ServerPlayerDataBaseMod extends Mod{
             rebuildIndexFromFiles();
             indexDirty = true;
             if(indexIntegrityState == integrityMissing) indexDirty = true;
+        }
+
+        private SqliteChatBackend tryCreateSqliteBackend(Seq<String> fallbackIssues){
+            try{
+                return new SqliteChatBackend();
+            }catch(Throwable t){
+                String message = "SQLite 聊天数据库不可用：当前运行环境缺少 SPDB 所需的 Java SQL 组件，已回退到 JSON 分片存储。";
+                if(fallbackIssues != null && !fallbackIssues.contains(message, false)){
+                    fallbackIssues.add(message);
+                }
+                Log.err("SPDB: sqlite backend unavailable, falling back to JSON shard storage.", t);
+                return null;
+            }
         }
 
         boolean usesSqlite(){
