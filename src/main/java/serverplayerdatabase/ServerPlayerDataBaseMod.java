@@ -70,9 +70,6 @@ public class ServerPlayerDataBaseMod extends Mod{
     /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
 
-    private static final String overlayQueryWindowName = "玩家数据库 / DB Query";
-    private static final String overlayDebugWindowName = "解析调试 / Parser Debug";
-
 
     private static final String keyCollect = "spdb-collect";
     private static final String keyRecordChat = "spdb-record-chat";
@@ -856,27 +853,19 @@ public class ServerPlayerDataBaseMod extends Mod{
             overlayQueryContent = new OverlayQueryContent();
         }
         if(overlayQueryWindow == null){
-            overlayQueryWindow = overlayUI.registerWindow(overlayQueryWindowName, overlayQueryContent.root, () -> Vars.state.isGame());
+            overlayQueryWindow = overlayUI.registerWindow("玩家数据库 / DB Query", overlayQueryContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayQueryWindow, false, true);
-            if(!hasStoredOverlayWindowState(overlayQueryWindowName)){
-                overlayUI.setEnabledAndPinned(overlayQueryWindow, true, false);
-            }
+            overlayUI.setEnabledAndPinned(overlayQueryWindow, true, false);
         }
 
         if(debugContent == null){
             debugContent = new DebugContent();
         }
         if(overlayDebugWindow == null){
-            overlayDebugWindow = overlayUI.registerWindow(overlayDebugWindowName, debugContent.root, () -> Vars.state.isGame());
+            overlayDebugWindow = overlayUI.registerWindow("解析调试 / Parser Debug", debugContent.root, () -> Vars.state.isGame());
             overlayUI.tryConfigureWindow(overlayDebugWindow, false, true);
-            if(!hasStoredOverlayWindowState(overlayDebugWindowName)){
-                overlayUI.setEnabledAndPinned(overlayDebugWindow, false, false);
-            }
+            overlayUI.setEnabledAndPinned(overlayDebugWindow, false, false);
         }
-    }
-
-    private boolean hasStoredOverlayWindowState(String windowName){
-        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private boolean compactUi(){
@@ -3683,7 +3672,7 @@ public class ServerPlayerDataBaseMod extends Mod{
 
     private static class ChatDatabase{
         private static final int maxCachedDays = 8;
-        private SqliteChatBackend sqlite;
+        private final SqliteChatBackend sqlite = new SqliteChatBackend();
         private boolean useSqlite;
 
         private final ObjectMap<String, Seq<ChatEntry>> dayEntries = new ObjectMap<>();
@@ -3706,9 +3695,7 @@ public class ServerPlayerDataBaseMod extends Mod{
         private int totalEntries;
 
         void loadStorage(Fi chatsDbFile, Fi chatsDir, Fi chatsIndexFile, Fi legacyChatFile, Json serializer){
-            Seq<String> sqliteFallbackIssues = new Seq<>();
-            sqlite = tryCreateSqliteBackend(sqliteFallbackIssues);
-            if(sqlite != null && sqlite.load(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer)){
+            if(sqlite.load(chatsDbFile, chatsDir, chatsIndexFile, legacyChatFile, serializer)){
                 useSqlite = true;
                 return;
             }
@@ -3724,11 +3711,6 @@ public class ServerPlayerDataBaseMod extends Mod{
             dirtyDates.clear();
             uidToDates.clear();
             integrityIssues.clear();
-            for(String issue : sqliteFallbackIssues){
-                if(issue != null && !issue.isEmpty() && !integrityIssues.contains(issue, false)){
-                    integrityIssues.add(issue);
-                }
-            }
             indexDirty = false;
             indexIntegrityState = integrityMissing;
             shardsChecked = 0;
@@ -3760,19 +3742,6 @@ public class ServerPlayerDataBaseMod extends Mod{
             rebuildIndexFromFiles();
             indexDirty = true;
             if(indexIntegrityState == integrityMissing) indexDirty = true;
-        }
-
-        private SqliteChatBackend tryCreateSqliteBackend(Seq<String> fallbackIssues){
-            try{
-                return new SqliteChatBackend();
-            }catch(Throwable t){
-                String message = "SQLite 聊天数据库不可用：当前运行环境缺少 SPDB 所需的 Java SQL 组件，已回退到 JSON 分片存储。";
-                if(fallbackIssues != null && !fallbackIssues.contains(message, false)){
-                    fallbackIssues.add(message);
-                }
-                Log.err("SPDB: sqlite backend unavailable, falling back to JSON shard storage.", t);
-                return null;
-            }
         }
 
         boolean usesSqlite(){

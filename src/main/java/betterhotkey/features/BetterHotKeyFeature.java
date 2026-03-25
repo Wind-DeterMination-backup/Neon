@@ -51,7 +51,6 @@ import static mindustry.Vars.state;
 import static mindustry.Vars.ui;
 
 public class BetterHotKeyFeature {
-    private static final String overlayWindowName = "betterhotkey-hotkeys";
     private static final String keyEnabled = "bhk-enabled";
     private static final String keyKeepOrder = "bhk-keep-order";
     private static final String keyCustomEnabled = "bhk-custom-enabled";
@@ -248,20 +247,15 @@ public class BetterHotKeyFeature {
         }
 
         Prov<Boolean> availability = () -> state != null && state.isGame();
-        boolean hadStoredState = hasStoredOverlayWindowState(overlayWindowName);
-        xHotkeyWindow = xOverlayUi.registerWindow(overlayWindowName, bhkOverlay, availability);
+        xHotkeyWindow = xOverlayUi.registerWindow("betterhotkey-hotkeys", bhkOverlay, availability);
         if (xHotkeyWindow == null) return;
 
         hostedByOverlayUI = true;
         // Small info panel: auto-height, not resizable by default.
         xOverlayUi.tryConfigureWindow(xHotkeyWindow, true, false);
-        if (hadStoredState) {
-            lastOverlaySyncEnabled = enabled;
-        } else {
-            // Only auto-show on first registration. Afterwards respect OverlayUI's persisted state.
-            lastOverlaySyncEnabled = !enabled;
-            syncOverlayUiEnabled();
-        }
+        // Do an initial enable sync once.
+        lastOverlaySyncEnabled = !enabled;
+        syncOverlayUiEnabled();
     }
 
     private static void syncOverlayUiEnabled() {
@@ -270,10 +264,6 @@ public class BetterHotKeyFeature {
         lastOverlaySyncEnabled = enabled;
         // Default behavior: when enabled, make it visible (pinned). Players can unpin/hide from OverlayUI.
         xOverlayUi.setEnabledAndPinned(xHotkeyWindow, enabled, enabled);
-    }
-
-    private static boolean hasStoredOverlayWindowState(String windowName) {
-        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     public static void buildSettings(SettingsMenuDialog.SettingsTable table) {

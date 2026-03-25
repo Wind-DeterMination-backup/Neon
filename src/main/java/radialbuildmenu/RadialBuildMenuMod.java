@@ -1397,10 +1397,8 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
                     xMobileToggleWindow = xOverlayUi.registerWindow(mobileWindowName, content, () -> state != null && state.isGame());
                     if(xMobileToggleWindow != null){
                         xOverlayUi.configureWindow(xMobileToggleWindow, true, false);
-                        // Auto-enable only on first registration; afterwards keep OverlayUI's persisted visibility.
-                        if(!hasStoredOverlayWindowState(mobileWindowName)){
-                            xOverlayUi.setEnabledAndPinned(xMobileToggleWindow, true, false);
-                        }
+                        // Auto-enable once, but don't force pinned (allow hiding/closing from OverlayUI).
+                        xOverlayUi.setEnabledAndPinned(xMobileToggleWindow, true, false);
                         return;
                     }
                 }catch(Throwable t){
@@ -1422,10 +1420,6 @@ public class RadialBuildMenuMod extends mindustry.mod.Mod{
             content.setPosition(Core.graphics.getWidth() / 2f, Core.graphics.getHeight() / 2f, Align.center);
             content.toFront();
         });
-    }
-
-    private static boolean hasStoredOverlayWindowState(String windowName){
-        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private Table buildMobileToggleContent(){

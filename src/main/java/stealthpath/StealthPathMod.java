@@ -67,6 +67,7 @@ import mindustry.world.meta.BuildVisibility;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.PriorityQueue;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -86,11 +87,6 @@ import static mindustry.Vars.world;
 public class StealthPathMod extends mindustry.mod.Mod{
     /** When true, this mod is running as a bundled component inside Neon. */
     public static boolean bekBundled = false;
-
-    private static final String overlayWindowModeName = "stealthpath-mode";
-    private static final String overlayWindowDamageName = "stealthpath-damage";
-    private static final String overlayWindowControlsName = "stealthpath-controls";
-    private static final String overlayWindowHoverDpsName = "stealthpath-hoverdps";
 
 
     private static final String keyEnabled = "sp-enabled";
@@ -246,6 +242,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private final arc.struct.IntIntMap autoMoveFollowPathHash = new arc.struct.IntIntMap();
     private final arc.struct.IntFloatMap autoMoveFollowLastIssue = new arc.struct.IntFloatMap();
     private float rtsSendCursor = 0f;
+    private boolean boostCommandResolved = false;
+    private boolean boostCommandLookupFailed = false;
+    private UnitCommand cachedBoostCommand = null;
 
     private float autoMoveMonitorUntil = 0f;
     private float autoMoveMonitorNextCheck = 0f;
@@ -1373,8 +1372,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
         }
 
         Vec2 waypoint = new Vec2(tileToWorld(goalX) + tilesize / 2f, tileToWorld(goalY) + tilesize / 2f);
-        if(UnitCommand.boostCommand != null){
-            Call.setUnitCommand(player, unitIds, UnitCommand.boostCommand);
+        UnitCommand boostCommand = resolveBoostCommand();
+        if(boostCommand != null){
+            Call.setUnitCommand(player, unitIds, boostCommand);
         }
         Call.commandUnits(player, unitIds, null, null, waypoint, false, true);
         return true;
@@ -3543,8 +3543,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
             if(autoMoveCommandByUnit.get(unitIds[i], -1) != commandId) return;
         }
 
-        if(!queue && UnitCommand.boostCommand != null){
-            Call.setUnitCommand(player, unitIds, UnitCommand.boostCommand);
+        UnitCommand boostCommand = resolveBoostCommand();
+        if(!queue && boostCommand != null){
+            Call.setUnitCommand(player, unitIds, boostCommand);
         }
 
         Call.commandUnits(player, unitIds, null, null, waypoint, queue, true);
@@ -3554,6 +3555,26 @@ public class StealthPathMod extends mindustry.mod.Mod{
             queue,
             Strings.autoFixed(waypoint.x, 1),
             Strings.autoFixed(waypoint.y, 1)));
+    }
+
+    private UnitCommand resolveBoostCommand(){
+        if(boostCommandResolved) return cachedBoostCommand;
+        boostCommandResolved = true;
+        try{
+            Field field = UnitCommand.class.getField("boostCommand");
+            Object value = field.get(null);
+            if(value instanceof UnitCommand){
+                cachedBoostCommand = (UnitCommand)value;
+                return cachedBoostCommand;
+            }
+        }catch(Throwable t){
+            if(!boostCommandLookupFailed){
+                boostCommandLookupFailed = true;
+                Log.warn("StealthPath: UnitCommand.boostCommand is unavailable in this runtime; skipping boost-command preselection for RTS move commands.");
+                Log.debug("StealthPath: boostCommand lookup failed.", t);
+            }
+        }
+        return null;
     }
 
     private static int findNearestPassable(ThreatMap map, int x, int y, int radius){
@@ -5236,42 +5257,42 @@ public class StealthPathMod extends mindustry.mod.Mod{
                 if(xModeWindow == null){
                     try{ overlayModeContent.remove(); }catch(Throwable ignored){}
                     xModeWindow = xOverlayUi.registerWindow(
-                        overlayWindowModeName,
+                        "stealthpath-mode",
                         overlayModeContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowMode, true)
                     );
                     xOverlayUi.tryConfigureWindow(xModeWindow, false, true);
-                    if(enabled && showMode && !hasStoredOverlayWindowState(overlayWindowModeName)) xOverlayUi.setEnabledAndPinned(xModeWindow, true, false);
+                    if(enabled && showMode) xOverlayUi.setEnabledAndPinned(xModeWindow, true, false);
                 }
                 if(xDamageWindow == null){
                     try{ overlayDamageContent.remove(); }catch(Throwable ignored){}
                     xDamageWindow = xOverlayUi.registerWindow(
-                        overlayWindowDamageName,
+                        "stealthpath-damage",
                         overlayDamageContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowDamage, true)
                     );
                     xOverlayUi.tryConfigureWindow(xDamageWindow, false, true);
-                    if(enabled && showDamage && !hasStoredOverlayWindowState(overlayWindowDamageName)) xOverlayUi.setEnabledAndPinned(xDamageWindow, true, false);
+                    if(enabled && showDamage) xOverlayUi.setEnabledAndPinned(xDamageWindow, true, false);
                 }
                 if(xControlsWindow == null){
                     try{ overlayControlsContent.remove(); }catch(Throwable ignored){}
                     xControlsWindow = xOverlayUi.registerWindow(
-                        overlayWindowControlsName,
+                        "stealthpath-controls",
                         overlayControlsContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyOverlayWindowControls, true)
                     );
                     xOverlayUi.tryConfigureWindow(xControlsWindow, false, true);
-                    if(enabled && showControls && !hasStoredOverlayWindowState(overlayWindowControlsName)) xOverlayUi.setEnabledAndPinned(xControlsWindow, true, false);
+                    if(enabled && showControls) xOverlayUi.setEnabledAndPinned(xControlsWindow, true, false);
                 }
                 if(xHoverDpsWindow == null){
                     try{ overlayHoverDpsContent.remove(); }catch(Throwable ignored){}
                     xHoverDpsWindow = xOverlayUi.registerWindow(
-                        overlayWindowHoverDpsName,
+                        "stealthpath-hoverdps",
                         overlayHoverDpsContent,
                         () -> state != null && state.isGame() && Core.settings.getBool(keyEnabled, true) && Core.settings.getBool(keyDebugHoverTurretDps, false)
                     );
                     xOverlayUi.tryConfigureWindow(xHoverDpsWindow, false, true);
-                    if(enabled && showHoverDps && !hasStoredOverlayWindowState(overlayWindowHoverDpsName)) xOverlayUi.setEnabledAndPinned(xHoverDpsWindow, true, false);
+                    if(enabled && showHoverDps) xOverlayUi.setEnabledAndPinned(xHoverDpsWindow, true, false);
                 }
                 return;
             }catch(Throwable ignored){
@@ -5287,10 +5308,6 @@ public class StealthPathMod extends mindustry.mod.Mod{
         syncFallbackHud(overlayDamageContent, "sp-ov-dmg", 8f, -84f, enabled && showDamage);
         syncFallbackHud(overlayControlsContent, "sp-ov-ctl", 8f, -152f, enabled && showControls);
         syncFallbackHudRight(overlayHoverDpsContent, "sp-ov-hover", -8f, -8f, enabled && showHoverDps);
-    }
-
-    private boolean hasStoredOverlayWindowState(String windowName){
-        return Core.settings != null && Core.settings.has("overlayUI." + windowName);
     }
 
     private void syncFallbackHud(Table content, String name, float x, float yFromTop, boolean visible){
