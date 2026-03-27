@@ -43,8 +43,10 @@ import mindustry.ui.dialogs.BaseDialog;
 import mindustry.ui.dialogs.SettingsMenuDialog;
 import mindustry.core.World;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -91,6 +93,7 @@ public class CustomMarkerFeature {
 
     private static final Vec2 panelWorld = new Vec2();
     private static final Pattern coordPattern = Pattern.compile("\\((-?\\d+)\\s*,\\s*(-?\\d+)\\)");
+    private static final Pattern templatedMarkerPattern = Pattern.compile("^\\s*<([^<>]*)><([^<>]*)>\\((-?\\d+)\\s*,\\s*(-?\\d+)\\)\\s*$");
     private static final Seq<ChatMarkEntry> chatMarks = new Seq<>();
 
     private static boolean panelVisible;
@@ -112,6 +115,7 @@ public class CustomMarkerFeature {
     private static Table markHitter;
 
     private static final MindustryXMarkers xMarkers = new MindustryXMarkers();
+    private static final NativeMarkers nativeMarkers = new NativeMarkers();
     private static final MindustryXOverlayUI xOverlayUi = new MindustryXOverlayUI();
     private static Object xOverlayWindow;
     private static Object xChatListWindow;
@@ -131,6 +135,7 @@ public class CustomMarkerFeature {
             reloadRuntimeSettings();
             reloadTemplatesFromSettings();
             xMarkers.tryInit();
+            nativeMarkers.tryInit();
             ensureUiAttached();
             syncOverlayButtonWindow(true);
         });
@@ -541,7 +546,7 @@ public class CustomMarkerFeature {
         control.input.panCamera(Tmp.v1.set(wx, wy));
 
         String markText = "<CM><Saved>(" + entry.tileX + "," + entry.tileY + ")";
-        xMarkers.tryMark(markText, entry.tileX, entry.tileY);
+        dispatchMarkerCompat(markText, entry.tileX, entry.tileY);
 
         // Run twice to survive late focus re-assignments from click handlers.
         Core.app.post(() -> Core.app.post(CustomMarkerFeature::clearSceneUiFocus));
@@ -592,6 +597,11 @@ public class CustomMarkerFeature {
         Call.sendChatMessage(currentChatPrefix() + message);
     }
 
+    private static void dispatchMarkerCompat(String message, int tileX, int tileY) {
+        xMarkers.tryMark(message, tileX, tileY);
+        nativeMarkers.tryMark(message, tileX, tileY);
+    }
+
     private static void markCurrent(int index) {
         if (!canUseMarkerUi()) return;
         if (index < 0 || index >= templateCount) return;
@@ -614,7 +624,7 @@ public class CustomMarkerFeature {
             ui.hudfrag.showToast("[accent]" + message + "[]");
         }
 
-        xMarkers.tryMark(message, tileX, tileY);
+        dispatchMarkerCompat(message, tileX, tileY);
 
         // Ensure wheel focus returns to world zoom after marker interactions.
         Core.app.post(() -> Core.app.post(CustomMarkerFeature::clearSceneUiFocus));
@@ -1190,6 +1200,140 @@ public class CustomMarkerFeature {
             } catch (Throwable ignored) {
                 available = false;
             }
+        }
+    }
+
+    private static class NativeMarkers {
+        private static final float markerLifetime = 1800f;
+        private static final float pointRadius = 6f;
+        private static final float pointStroke = 11f;
+        private static final float textYOffset = 14f;
+
+        private boolean initialized;
+        private boolean available;
+        private Constructor<?> pointMarkerCtor;
+        private Constructor<?> textMarkerCtor;
+        private Method createMarker;
+        private Method removeMarker;
+        private Field minimapField;
+        private int nextMarkerSeq = 1;
+
+        void tryInit() {
+            if (initialized) return;
+            initialized = true;
+
+            try {
+                Class<?> objectiveMarker = Class.forName("mindustry.game.MapObjectives$ObjectiveMarker");
+                Class<?> pointMarker = Class.forName("mindustry.game.MapObjectives$PointMarker");
+                Class<?> textMarker = Class.forName("mindustry.game.MapObjectives$TextMarker");
+                Class<?> callClass = Class.forName("mindustry.gen.Call");
+
+                pointMarkerCtor = pointMarker.getConstructor(int.class, int.class, float.class, float.class, Color.class);
+                textMarkerCtor = textMarker.getConstructor(String.class, float.class, float.class);
+                createMarker = callClass.getMethod("createMarker", int.class, objectiveMarker);
+                removeMarker = callClass.getMethod("removeMarker", int.class);
+                minimapField = objectiveMarker.getField("minimap");
+                available = true;
+            } catch (Throwable ignored) {
+                available = false;
+            }
+        }
+
+        void tryMark(String message, int tileX, int tileY) {
+            if (!available || createMarker == null || removeMarker == null) return;
+
+            String label = buildLabel(message);
+            float worldX = tileX * tilesize;
+            float worldY = tileY * tilesize;
+            int pointId = nextMarkerId();
+            int textId = pointId + 1;
+            boolean textCreated = false;
+
+            try {
+                Object pointMarker = pointMarkerCtor.newInstance(Math.round(worldX), Math.round(worldY), pointRadius, pointStroke, resolveColor(message));
+                minimapField.setBoolean(pointMarker, true);
+                createMarker.invoke(null, pointId, pointMarker);
+
+                if (!label.isEmpty()) {
+                    Object textMarker = textMarkerCtor.newInstance(label, worldX, worldY + textYOffset);
+                    createMarker.invoke(null, textId, textMarker);
+                    textCreated = true;
+                }
+
+                boolean finalTextCreated = textCreated;
+                Time.run(markerLifetime, () -> {
+                    tryRemove(pointId);
+                    if (finalTextCreated) {
+                        tryRemove(textId);
+                    }
+                });
+            } catch (Throwable ignored) {
+                available = false;
+            }
+        }
+
+        private void tryRemove(int markerId) {
+            if (!available || removeMarker == null) return;
+
+            try {
+                removeMarker.invoke(null, markerId);
+            } catch (Throwable ignored) {
+                available = false;
+            }
+        }
+
+        private int nextMarkerId() {
+            int playerPart = player == null ? 0 : (player.id & 1023);
+            int id = (playerPart << 20) | (nextMarkerSeq++ << 1);
+            if (nextMarkerSeq >= (1 << 19)) {
+                nextMarkerSeq = 1;
+            }
+            return Math.max(id, 2);
+        }
+
+        private Color resolveColor(String message) {
+            int index = resolveTemplateIndex(message);
+            return markerColors[Mathf.clamp(index, 0, markerColors.length - 1)].cpy();
+        }
+
+        private int resolveTemplateIndex(String message) {
+            if (message == null) return 0;
+
+            String trimmed = message.trim();
+            for (int i = 0; i < templateCount; i++) {
+                String first = sanitizeToken(firstParts[i], defaultFirst[i]);
+                String second = sanitizeToken(secondParts[i], defaultSecond[i]);
+                if (trimmed.startsWith("<" + first + "><" + second + ">")) {
+                    return i;
+                }
+            }
+
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (lower.contains("<gather>") || trimmed.contains("集合")) return 1;
+            if (lower.contains("<attack>") || trimmed.contains("攻击")) return 2;
+            if (lower.contains("<defend>") || trimmed.contains("防御")) return 3;
+            if (lower.contains("<what>") || trimmed.contains("问号")) return 4;
+            return 0;
+        }
+
+        private String buildLabel(String message) {
+            if (message == null) return "";
+
+            Matcher matcher = templatedMarkerPattern.matcher(message.trim());
+            if (matcher.matches()) {
+                String second = sanitizeLabel(matcher.group(2));
+                if (!second.isEmpty()) return second;
+                return sanitizeLabel(matcher.group(1));
+            }
+
+            String plain = coordPattern.matcher(message).replaceAll("");
+            plain = plain.replace('<', ' ').replace('>', ' ').trim();
+            plain = sanitizeLabel(plain);
+            return plain.length() > 24 ? plain.substring(0, 24) : plain;
+        }
+
+        private String sanitizeLabel(String text) {
+            return text == null ? "" : text.replace('\n', ' ').replace('\r', ' ').trim();
         }
     }
 }
