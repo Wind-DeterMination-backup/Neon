@@ -67,6 +67,7 @@ import mindustry.world.meta.BuildVisibility;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.PriorityQueue;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -246,6 +247,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
     private final arc.struct.IntIntMap autoMoveFollowPathHash = new arc.struct.IntIntMap();
     private final arc.struct.IntFloatMap autoMoveFollowLastIssue = new arc.struct.IntFloatMap();
     private float rtsSendCursor = 0f;
+    private boolean boostCommandResolved = false;
+    private boolean boostCommandLookupFailed = false;
+    private UnitCommand cachedBoostCommand = null;
 
     private float autoMoveMonitorUntil = 0f;
     private float autoMoveMonitorNextCheck = 0f;
@@ -1373,8 +1377,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
         }
 
         Vec2 waypoint = new Vec2(tileToWorld(goalX) + tilesize / 2f, tileToWorld(goalY) + tilesize / 2f);
-        if(UnitCommand.boostCommand != null){
-            Call.setUnitCommand(player, unitIds, UnitCommand.boostCommand);
+        UnitCommand boostCommand = resolveBoostCommand();
+        if(boostCommand != null){
+            Call.setUnitCommand(player, unitIds, boostCommand);
         }
         Call.commandUnits(player, unitIds, null, null, waypoint, false, true);
         return true;
@@ -3543,8 +3548,9 @@ public class StealthPathMod extends mindustry.mod.Mod{
             if(autoMoveCommandByUnit.get(unitIds[i], -1) != commandId) return;
         }
 
-        if(!queue && UnitCommand.boostCommand != null){
-            Call.setUnitCommand(player, unitIds, UnitCommand.boostCommand);
+        UnitCommand boostCommand = resolveBoostCommand();
+        if(!queue && boostCommand != null){
+            Call.setUnitCommand(player, unitIds, boostCommand);
         }
 
         Call.commandUnits(player, unitIds, null, null, waypoint, queue, true);
@@ -3554,6 +3560,26 @@ public class StealthPathMod extends mindustry.mod.Mod{
             queue,
             Strings.autoFixed(waypoint.x, 1),
             Strings.autoFixed(waypoint.y, 1)));
+    }
+
+    private UnitCommand resolveBoostCommand(){
+        if(boostCommandResolved) return cachedBoostCommand;
+        boostCommandResolved = true;
+        try{
+            Field field = UnitCommand.class.getField("boostCommand");
+            Object value = field.get(null);
+            if(value instanceof UnitCommand){
+                cachedBoostCommand = (UnitCommand)value;
+                return cachedBoostCommand;
+            }
+        }catch(Throwable t){
+            if(!boostCommandLookupFailed){
+                boostCommandLookupFailed = true;
+                Log.warn("StealthPath: UnitCommand.boostCommand is unavailable in this runtime; skipping boost-command preselection for RTS move commands.");
+                Log.debug("StealthPath: boostCommand lookup failed.", t);
+            }
+        }
+        return null;
     }
 
     private static int findNearestPassable(ThreatMap map, int x, int y, int radius){

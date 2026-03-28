@@ -6,6 +6,8 @@ out/
 .idea/
 *.iml
 *.log
+Detail.md
+tools/generate_detail.py
 
 # OS
 .DS_Store

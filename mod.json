@@ -4,7 +4,7 @@
   "author": "DeterMination (BEK)",
   "repo": "Wind-DeterMination-backup/Neon",
   "description": "A bundled toolkit with 14 client modules, including UpdateScheme schematic publishing/subscription. / 辅助模组十四合一，含 UpdateScheme 蓝图发布/订阅。",
-  "version": "6.4.0",
+  "version": "6.4.1",
   "minGameVersion": 154,
   "hidden": true,
   "java": true,
